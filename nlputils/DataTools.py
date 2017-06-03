@@ -1,6 +1,8 @@
 import io
 import ujson
 import os
+from sklearn.base import BaseEstimator, TransformerMixin
+
 import numpy
 from xml.sax.saxutils import unescape
 from collections import defaultdict, Counter
@@ -129,9 +131,9 @@ class Vocabulary:
         self.set_unknown(index)
 
     def init_from_vocab(self, vocab):
-        tmp_vocab = list(vocab)
+        self.vocab = set(vocab)
 
-        self.vocab = set(tmp_vocab)
+        tmp_vocab = list(self.vocab)
         self.index2word, self.word2index = get_mappings(tmp_vocab)
         self.counts = Counter(self.vocab)
 
@@ -227,6 +229,17 @@ class Vocabulary:
             v[self.get_index(word)] = 1
         return v
 
+    def to_bow(self, words):
+        v = numpy.zeros(len(self.index2word))
+        for i, word in enumerate(words):
+            v[self.get_index(word)] += 1
+        return v
+
+    def to_bbow(self, words):
+        v = self.to_bow(words)
+        v = (v > 0).astype(int)
+        return v
+
     def to_one_hot_sequence(self, words):
         v = numpy.zeros((len(words), len(self.index2word)))
         for i, word in enumerate(words):
@@ -240,6 +253,20 @@ class Vocabulary:
 
     def from_k_hot(self, k_hot, threshold=0.5):
         words = set(self.get_words(i for i, x in enumerate(k_hot) if x > threshold))
+        return words
+
+    def from_bow(self, bow, threshold=0.5):
+        words = []
+        for i, v in enumerate(bow):
+            k = int(v)
+            r = v - k
+            if r > threshold:
+                k += 1
+            words += [self.get_word(i)] * k
+        return words
+
+    def from_bbow(self, bow, threshold=0.5):
+        words = set(self.get_words(i for i, x in enumerate(bow) if x > threshold))
         return words
 
     def save(self, filepath):
@@ -349,8 +376,12 @@ class Embedding:
     def get_vector(self, word):
         return self.W[self.vocabulary.get_index(word), :]
 
-    def get_vectors(self, words):
-        return self.W[self.vocabulary.get_indices(words), :]
+    def get_vectors(self, words, drop_unknown=False):
+        indices = self.vocabulary.get_indices(words, drop_unknown)
+        if len(indices) > 0:
+            return self.W[indices, :]
+        else:
+            return numpy.zeros((0, self.W.shape[1]))
 
     def save(self, dirpath, embedding_name):
         embedding_filepath = os.path.join(dirpath, embedding_name + "_W.npy")
@@ -382,6 +413,45 @@ class Embedding:
         self.W = self.W / numpy.expand_dims(numpy.linalg.norm(self.W, axis=1), axis=1)
 
 
+class WordIndexTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, word_vocabulary=None):
+        self.word_vocabulary = word_vocabulary
+
+    def transform(self, tokenized_documents, drop_unknown=False, **transform_params):
+        I = []
+        max_len = 0
+        for tokens in tokenized_documents:
+            indices = self.word_vocabulary.get_indices(tokens, drop_unknown=drop_unknown)
+            max_len = max(max_len, len(tokens))
+            I.append(indices)
+
+        I = [[self.word_vocabulary.padding_index] * (max_len - len(indices)) + list(indices) for indices in I]
+        I = numpy.array(I)
+        return I  # {"token_input": I}
+
+    def fit(self, tokenized_documents, y=None, **transform_params):
+        self.word_vocabulary = Vocabulary()
+        vocab_counts = Counter()
+        for tokens in tokenized_documents:
+            vocab_counts.update(tokens)
+
+        self.word_vocabulary.init_from_counts(vocab_counts)
+        self.word_vocabulary.add_padding("<pad>", 0)
+        self.word_vocabulary.add_unknown("<unk>", 1)
+        return self
+
+
+class LambdaTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, function):
+        self.function = function
+
+    def transform(self, documents, **transform_params):
+        return map(self.function, documents)
+
+    def fit(self, X, y=None, **transform_params):
+        return self
+
+
 def html_unescape(text):
     return unescape(text, html_unescape_table)
 
@@ -407,8 +477,9 @@ def train_test_split_indices(N, fraction, seed=None):
     return I_train, I_test
 
 
-def cross_validation_split_indices(N, folds, seed=0):
-    numpy.random.seed(seed)
+def cross_validation_split_indices(N, folds, seed=None):
+    if seed is not None:
+        numpy.random.seed(seed)
     P = numpy.random.permutation(range(N))
 
     S = numpy.array(numpy.linspace(0, N, folds + 1), dtype="int")
@@ -416,8 +487,8 @@ def cross_validation_split_indices(N, folds, seed=0):
     return I
 
 
-def cross_validation_split(documents, folds):
-    I = cross_validation_split_indices(len(documents), folds)
+def cross_validation_split(documents, folds, seed=None):
+    I = cross_validation_split_indices(len(documents), folds, seed=seed)
     cv_data = []
     for k_test in range(len(I)):
         test_documents = subset(documents, I[k_test])

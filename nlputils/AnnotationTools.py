@@ -100,6 +100,121 @@ class IOBScheme:
         return IOBScheme.name
 
 
+class IOBXScheme:
+    index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
+    size = len(index2tag)
+    name = "IOBX"
+
+    @staticmethod
+    def spans2tags(length, spans):
+        sorted(spans, key=lambda s: s[0])
+        bio_sequence = ["O"] * length
+        for s, e in spans:
+            if bio_sequence[s - 1] == "B" or bio_sequence[s - 1] == "I":
+                # if previous token is annotated (by different annotation)
+                # == if last is I or B start with B
+                bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
+            else:
+                # if last is O start with I
+                bio_sequence[s:e] = ["I"] * (e - s)
+
+        return bio_sequence
+
+    @staticmethod
+    def tags2spans(tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "B":
+                if start is not None:
+                    spans.append((start, i))
+                start = i
+            elif t == "I":
+                if start is None:
+                    start = i
+            elif t == "O":
+                if start is not None:
+                    spans.append((start, i))
+                start = None
+
+        if start:
+            spans.append((start, len(tags)))
+        return spans
+
+    @staticmethod
+    def spans2encoding(length, spans):
+        return IOBXScheme.tags2encoding(IOBXScheme.spans2tags(length, spans))
+
+    @staticmethod
+    def tags2encoding(tag_sequence):
+        n_tags = len(IOBXScheme.tag2index)
+        n_elements = len(tag_sequence)
+        encoding = numpy.zeros((n_elements, n_tags))
+        for i, t in enumerate(tag_sequence):
+            if t == "B":
+                encoding[i, :] = [1, 1, 0]
+            elif t == "I":
+                encoding[i, :] = [0, 1, 0]
+            elif t == "O":
+                encoding[i, :] = [0, 0, 1]
+
+        return encoding
+
+    @staticmethod
+    def encoding2tags(encoding):
+        tag_sequence = []
+        for vec in encoding:
+            if vec[2] > vec[1]:
+                # O > I
+                tag_sequence.append("O")
+            else:
+                # I > O
+                if vec[0] > 0.5:
+                    tag_sequence.append("B")
+                else:
+                    tag_sequence.append("I")
+        return tag_sequence
+
+    @staticmethod
+    def encoding2spans(encoding):
+        return IOBXScheme.tags2spans(IOBXScheme.encoding2tags(encoding))
+
+    @staticmethod
+    def visualize_encoding(elements, bio, onehot=True, spacer=u""):
+        b = Fore.GREEN  # beginning
+        i = Fore.BLUE  # inside
+        o = Fore.BLACK  # outside
+        BI = [b, i, o]
+        if onehot:
+            bio_indices = numpy.argmax(bio, axis=1)
+        else:
+            bio_indices = bio
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+        return colored_text
+
+    @staticmethod
+    def visualize_tags(elements, tags, spacer=u""):
+        cm = dict()
+        cm["B"] = Fore.GREEN  # beginning
+        cm["I"] = Fore.BLUE  # inside
+        cm["O"] = ""  # outside
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda (e, t): cm[t] + e + Fore.RESET, zip(elements, tags)))
+        return colored_text
+
+    @staticmethod
+    def visualize_spans(elements, spans, spacer=u""):
+        tags = IOBXScheme.spans2tags(len(elements), spans)
+        return IOBXScheme.visualize_tags(elements, tags, spacer)
+
+    def __str__(self):
+        return IOBXScheme.name
+
+    def __repr__(self):
+        return IOBXScheme.name
+
+
 class IOB2Scheme:
     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
     size = len(index2tag)
@@ -169,6 +284,14 @@ class IOB2Scheme:
 
     def __repr__(self):
         return IOBScheme.name
+
+
+def get_tagging_scheme(name):
+    name = name.lower()
+    if name == "iob" or name == "bio":
+        return IOBScheme
+    if name == "iob2" or name == "bio2":
+        return IOB2Scheme
 
 
 # class IOEScheme:

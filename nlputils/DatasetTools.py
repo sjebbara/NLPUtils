@@ -27,11 +27,12 @@ class BatchIterator:
 class BatchGenerator:
     RAW_DATA_BATCH_NAME = "raw_data"
 
-    def __init__(self, iterable, batch_size=1, vectorizer=None, return_raw_data_batch=False):
+    def __init__(self, iterable, batch_size=1, vectorizer=None, raw_data_name=None, return_raw_data_batch=False):
         self.iterable = iterable
         self.batch_size = batch_size
         self.vectorizer = vectorizer
         self.return_raw_data_batch = return_raw_data_batch
+        self.raw_data_name = raw_data_name
 
     def __iter__(self):
         batch = []
@@ -47,10 +48,13 @@ class BatchGenerator:
             yield self._vectorize_batch(batch)
 
     def _vectorize_batch(self, batch):
-        vectorized_batch = self.vectorizer.transform_all(batch)
-        if self.return_raw_data_batch:
+        vectorized_batch = self.vectorizer.transform(batch)
+        if self.return_raw_data_batch or self.raw_data_name:
             if type(vectorized_batch) is LearningTools.BetterDict:
-                vectorized_batch[BatchGenerator.RAW_DATA_BATCH_NAME] = batch
+                if self.raw_data_name:
+                    vectorized_batch[self.raw_data_name] = batch
+                else:
+                    vectorized_batch[BatchGenerator.RAW_DATA_BATCH_NAME] = batch
                 return vectorized_batch
             else:
                 return batch, vectorized_batch
@@ -58,14 +62,14 @@ class BatchGenerator:
         return vectorized_batch
 
 
-class FunctionalVectorizer(object):
+class Vectorizer(object):
     def __init__(self, name=None):
         self.name = name
+        if self.name is None:
+            self.name = type(self).__name__
         self.previous_vectorizer = None
-        # self.to_array = to_array
 
     def _transform_instance(self, x):
-        # print "transform_instance:", self.name
         return x
 
     def _transform_batch(self, X):
@@ -79,41 +83,34 @@ class FunctionalVectorizer(object):
         return T
 
     def __call__(self, previous_vectorizer):
+        assert isinstance(previous_vectorizer, Vectorizer)
+        if self.previous_vectorizer:
+            print "Warning: Override previously assigned vectorizer:", self.previous_vectorizer.name
         self.previous_vectorizer = previous_vectorizer
+        return self
 
 
-class FunctionalVectorizerUnion(FunctionalVectorizer):
-    def __init__(self, **kwargs):
-        super(FunctionalVectorizerUnion, self).__init__(**kwargs)
-        self.previous_vectorizers = dict()
+class VectorizerUnion(Vectorizer):
+    def __init__(self, previous_vectorizers=None, **kwargs):
+        super(VectorizerUnion, self).__init__(**kwargs)
+
+        if previous_vectorizers:
+            self.previous_vectorizers = dict(previous_vectorizers)
+        else:
+            self.previous_vectorizers = dict()
 
     def transform(self, X):
         T = LearningTools.BetterDict()
-        for name, vectorizer in self.previous_vectorizer.iteritems():
+        for name, vectorizer in self.previous_vectorizers.iteritems():
             T[name] = vectorizer.transform(X)
         return T
 
     def __call__(self, name, previous_vectorizer):
+        assert isinstance(previous_vectorizer, Vectorizer)
+        if name in self.previous_vectorizers:
+            print "Warning: Override previously assigned vectorizer:", name, self.previous_vectorizers[name].name
         self.previous_vectorizers[name] = previous_vectorizer
-
-
-class Vectorizer(object):
-    def __init__(self, name=None):
-        self.name = name
-        # self.to_array = to_array
-
-    def transform_instance(self, x):
-        # print "transform_instance:", self.name
-        return x
-
-    def transform_all(self, X):
-        # print "transform_all:", self.name
-        T = [self.transform_instance(x) for x in X]
-        return T
-        # if self.to_array:
-        #     return numpy.array(T)
-        # else:
-        #     return T
+        return self
 
 
 class LambdaVectorizer(Vectorizer):
@@ -121,7 +118,7 @@ class LambdaVectorizer(Vectorizer):
         super(LambdaVectorizer, self).__init__(**kwargs)
         self.instance_function = instance_function
 
-    def transform_instance(self, x):
+    def _transform_instance(self, x):
         if self.instance_function:
             return self.instance_function(x)
         else:
@@ -131,41 +128,41 @@ class LambdaVectorizer(Vectorizer):
 class IteratorVectorizer(Vectorizer):
     def __init__(self, vectorizer, **kwargs):
         super(IteratorVectorizer, self).__init__(**kwargs)
+        assert isinstance(vectorizer, Vectorizer)
         self.vectorizer = vectorizer
 
-    def transform_instance(self, iterable):
+    def _transform_instance(self, iterable):
         T = []
         for x in iterable:
-            T.append(self.vectorizer(x))
+            T.append(self.vectorizer._transform_instance(x))
         return T
 
 
-class VectorizerSequence(Vectorizer):
-    def __init__(self, vectorizers, **kwargs):
-        super(VectorizerSequence, self).__init__(**kwargs)
-        self.vectorizers = vectorizers
-
-    def transform_all(self, X):
-        T = X
-        for v in self.vectorizers:
-            T = v.transform_all(T)
-        return T
-
-
-class VectorizerUnion(Vectorizer):
-    def __init__(self, named_vectorizers, **kwargs):
-        super(VectorizerUnion, self).__init__(**kwargs)
-        self.named_vectorizers = named_vectorizers
-
-    def transform_all(self, X):
-        T = LearningTools.BetterDict()
-        for name, vectorizer in self.named_vectorizers:
-            T[name] = vectorizer.transform_all(X)
-        return T
+# class VectorizerSequence(Vectorizer):
+#     def __init__(self, vectorizers, **kwargs):
+#         super(VectorizerSequence, self).__init__(**kwargs)
+#         self.vectorizers = vectorizers
+#
+#     def _transform_batch(self, X):
+#         T = X
+#         for v in self.vectorizers:
+#             T = v._transform_batch(T)
+#         return T
+#
+# class VectorizerUnion(Vectorizer):
+#     def __init__(self, named_vectorizers, **kwargs):
+#         super(VectorizerUnion, self).__init__(**kwargs)
+#         self.named_vectorizers = named_vectorizers
+#
+#     def _transform_batch(self, X):
+#         T = LearningTools.BetterDict()
+#         for name, vectorizer in self.named_vectorizers:
+#             T[name] = vectorizer._transform_batch(X)
+#         return T
 
 
 class ArrayVectorizer(Vectorizer):
-    def transform_all(self, X):
+    def _transform_batch(self, X):
         return numpy.array(X)
 
 
@@ -173,13 +170,27 @@ class Padded1DSequenceVectorizer(Vectorizer):
     def __init__(self, vocabulary, padding_position, **kwargs):
         super(Padded1DSequenceVectorizer, self).__init__(**kwargs)
         self.vocabulary = vocabulary
-        self.vectorizer = VocabSequenceVectorizer1D(vocabulary)
+        self.vectorizer = VocabSequenceVectorizer1D(vocabulary, mode="sequence")
         self.padder = VocabularyPaddingVectorizer(vocabulary, padding_position)
 
-    def transform_all(self, sequences):
-        vectorized_sequences = [self.vectorizer.transform_instance(sequence) for sequence in sequences]
+    def _transform_batch(self, sequences):
+        vectorized_sequences = [self.vectorizer._transform_instance(sequence) for sequence in sequences]
 
-        padded_sequences = self.padder.transform_all(vectorized_sequences)
+        padded_sequences = self.padder._transform_batch(vectorized_sequences)
+        return padded_sequences
+
+
+class Padded2DSequenceVectorizer(Vectorizer):
+    def __init__(self, vocabulary, padding_position, **kwargs):
+        super(Padded2DSequenceVectorizer, self).__init__(**kwargs)
+        self.vocabulary = vocabulary
+        self.vectorizer = VocabSequenceVectorizer2D(vocabulary, mode="sequence")
+        self.padder = VocabularyPaddingVectorizer(vocabulary, padding_position)
+
+    def _transform_batch(self, sequences):
+        vectorized_sequences = [self.vectorizer._transform_instance(sequence) for sequence in sequences]
+
+        padded_sequences = self.padder._transform_batch(vectorized_sequences)
         return padded_sequences
 
 
@@ -189,7 +200,7 @@ class VocabSequenceVectorizer1D(Vectorizer):
         self.vocabulary = vocabulary
         self.mode = mode
 
-    def transform_instance(self, tokens):
+    def _transform_instance(self, tokens):
         if self.mode == "sequence":
             t = list(self.vocabulary.get_indices(tokens))
         elif self.mode == "bow":
@@ -213,29 +224,50 @@ class VocabSequenceVectorizer1D(Vectorizer):
 
 
 class VocabSequenceVectorizer2D(IteratorVectorizer):
-    def __init__(self, vocabulary):
-        super(VocabSequenceVectorizer2D, self).__init__(VocabSequenceVectorizer1D(vocabulary))
+    def __init__(self, vocabulary, mode="sequence"):
+        super(VocabSequenceVectorizer2D, self).__init__(VocabSequenceVectorizer1D(vocabulary, mode))
 
 
 class DocumentLevelTokenExtractor(Vectorizer):
-    def transform_instance(self, d):
+    def _transform_instance(self, d):
         return d.tokens
 
 
+class Opinions2TagSequence(Vectorizer):
+    def __init__(self, tagging_scheme, **kwargs):
+        super(Opinions2TagSequence, self).__init__(**kwargs)
+        self.tagging_scheme = tagging_scheme
+
+    def _transform_instance(self, d):
+        spans = set([(o.token_start, o.token_end) for o in d.opinions])
+        tags = self.tagging_scheme.spans2tags(len(d.tokens), spans)
+        return tags
+
+
+class TagSequenceVectorizer(Vectorizer):
+    def __init__(self, tagging_scheme, **kwargs):
+        super(TagSequenceVectorizer, self).__init__(**kwargs)
+        self.tagging_scheme = tagging_scheme
+
+    def _transform_instance(self, tags):
+        return self.tagging_scheme.tags2encoding(tags)
+
+
 class DocumentLevelPosTagExtractor(Vectorizer):
-    def transform_instance(self, d):
+    def _transform_instance(self, d):
         return d.token_pos_tags
 
 
 class SentenceLevelExtractor(Vectorizer):
     def __init__(self, sentence_extractor, **kwargs):
         super(SentenceLevelExtractor, self).__init__(**kwargs)
+        assert isinstance(sentence_extractor, Vectorizer)
         self.sentence_extractor = sentence_extractor
 
-    def transform_instance(self, d):
+    def _transform_instance(self, d):
         T = []
         for sentence in d.sentences:
-            T.append(self.sentence_extractor.transform_instance(sentence))
+            T.append(self.sentence_extractor._transform_instance(sentence))
         return T
 
 
@@ -255,9 +287,25 @@ class PaddingVectorizer(Vectorizer):
         self.padding_value = padding_value
         self.padding_position = padding_position
 
-    def transform_all(self, X):
+    def _transform_batch(self, X):
         X_padded = LearningTools.pad(X, self.padding_position, self.padding_value)
         X_padded = X_padded.astype(int)
+        return X_padded
+
+
+class PaddingVectorizer1D(Vectorizer):
+    def __init__(self, padding_value, padding_position, **kwargs):
+        super(PaddingVectorizer1D, self).__init__(**kwargs)
+        self.padding_value = padding_value
+        self.padding_position = padding_position
+
+    def _transform_batch(self, X):
+        max_len = max(len(x) for x in X)
+
+        if self.padding_position == "pre":
+            X_padded = [[self.padding_value] * (max_len - len(x)) + x for x in X]
+        elif self.padding_position == "post":
+            X_padded = [x + [self.padding_value] * (max_len - len(x)) for x in X]
         return X_padded
 
 

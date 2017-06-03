@@ -2,7 +2,9 @@ import gzip
 import io
 import pylab
 import re
+
 import datetime
+import ujson
 from colorama import Fore
 import numpy
 import scipy
@@ -15,8 +17,44 @@ import matplotlib
 import matplotlib.markers
 import matplotlib.pyplot as plt
 import pprint
+from bokeh.plotting import figure, output_file, show
 
 __author__ = 'sjebbara'
+
+
+class BetterDict(dict):
+    """
+    Example:
+    m = Map({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(BetterDict, self).__init__(*args, **kwargs)
+        for arg in args:
+            if isinstance(arg, dict):
+                for k, v in arg.iteritems():
+                    self[k] = v
+
+        if kwargs:
+            for k, v in kwargs.iteritems():
+                self[k] = v
+
+    def __getattr__(self, attr):
+        return self.get(attr)
+
+    def __setattr__(self, key, value):
+        self.__setitem__(key, value)
+
+    def __setitem__(self, key, value):
+        super(BetterDict, self).__setitem__(key, value)
+        self.__dict__.update({key: value})
+
+    def __delattr__(self, item):
+        self.__delitem__(item)
+
+    def __delitem__(self, key):
+        super(BetterDict, self).__delitem__(key)
+        del self.__dict__[key]
 
 
 class Configuration(dict):
@@ -56,6 +94,33 @@ class Configuration(dict):
     def description(self):
         return pprint.pformat(self)
 
+    def _to_primitive_dict(self):
+        d = dict()
+        for k, v in self.iteritems():
+            if hasattr(v, "__name__"):
+                d[k] = v.__name__
+            else:
+                d[k] = v
+        return d
+
+    def save(self, filepath, makedirs=False):
+        d = self._to_primitive_dict()
+        if makedirs:
+            dirpath = os.path.dirname(filepath)
+            os.makedirs(dirpath)
+
+        with open(filepath, "w") as f:
+            f.write(ujson.dumps(d))
+
+    @classmethod
+    def load(cls, filepath):
+        with open(filepath) as f:
+            conf_str = f.readline().strip()
+
+        d = ujson.loads(conf_str)
+        conf = Configuration(d)
+        return conf
+    
 
 class CorpusWrapper:
     def __init__(self):
@@ -298,7 +363,7 @@ class ScorePlot:
         if range:
             self.range = range
         else:
-            self.range = (0.3, 1)
+            self.range = (0, 1)
 
     def _get_color(self):
 
@@ -319,6 +384,9 @@ class ScorePlot:
         self.fig.savefig(filepath, dpi=200)
 
     def add(self, n, e, score, plot_type=None):
+        if plot_type is not None:
+            if plot_type not in self.scores:
+                self.init_plot_type(plot_type)
         if not math.isnan(score):
             self.ax.clear()
 
@@ -342,9 +410,6 @@ class ScorePlot:
                     self.ax.text(self.n_epochs - 2, mx, "{:.4f}".format(mx), fontsize=13, color="red")
 
             else:
-                if plot_type not in self.scores:
-                    self.init_plot_type(plot_type)
-
                 self.scores[plot_type][n, e] = score
                 for pt, scores in self.scores.iteritems():
                     scores = self.scores[pt]
@@ -369,6 +434,18 @@ class ScorePlot:
             self.fig.tight_layout()
             plt.draw()
             plt.show()
+            plt.pause(0.0001)
+
+    def print_scores(self, plot_type=None):
+        if plot_type:
+            plot_types = [plot_type]
+        else:
+            plot_types = self.scores.keys()
+
+        for pt in plot_types:
+            print "#####", pt, "#####"
+            print zip(numpy.argmax(self.scores[pt], axis=1), numpy.max(self.scores[pt], axis=1))
+            print self.scores[pt]
 
 
 class AttentionPlot:
@@ -679,6 +756,71 @@ class MultiBatchIterator:
             return batches
 
 
+class NamedMultiBatchIterator:
+    DATA_BATCH_NAME = "raw_data"
+
+    def __init__(self, iterable, batch_size=1, vectorizer=None, batch_vectorizer=None):
+        self.iterable = iterable
+        self.batch_size = batch_size
+        self.vectorizer = vectorizer
+        self.batches_vectorizer = batch_vectorizer
+
+        self.n_batches = (len(iterable) + 1) / batch_size
+        self.n_data = len(iterable)
+        self.batch_index = 0
+        self.data_index = 0
+
+    def __iter__(self):
+        batches = None
+        self.data_index = 0
+        self.batch_index = 0
+        for element in self.iterable:
+            self.data_index += 1
+            if self.vectorizer:
+                vectorized_batch_parts = self.vectorizer(element)
+            else:
+                vectorized_batch_parts = element
+
+            if batches is None:
+                # create empty dict
+                batches = BetterDict((name, []) for name, part in vectorized_batch_parts.items())
+                batches[NamedMultiBatchIterator.DATA_BATCH_NAME] = []
+
+            # append new element to each batch
+            for name in vectorized_batch_parts:
+                batch = batches[name]
+                batch_part = vectorized_batch_parts[name]
+                batch.append(batch_part)
+
+            batches[NamedMultiBatchIterator.DATA_BATCH_NAME].append(element)
+
+            current_batch_size = len(batches[NamedMultiBatchIterator.DATA_BATCH_NAME])
+            if current_batch_size >= self.batch_size:
+                self.batch_index += 1
+                yield self.__vectorize_batch(batches)
+                batches = None
+
+        if batches is not None:
+            yield self.__vectorize_batch(batches)
+            batches = None
+
+    def __vectorize_batch(self, batches):
+        if self.batches_vectorizer:
+            vectorized_batches = self.batches_vectorizer(batches)
+            vectorized_batches[NamedMultiBatchIterator.DATA_BATCH_NAME] = batches[
+                NamedMultiBatchIterator.DATA_BATCH_NAME]
+            batches = BetterDict(vectorized_batches)
+        return batches
+
+
+def print_batch_shapes(batches):
+    for name, b in batches.items():
+        if hasattr(b, "shape"):
+            print name, b.shape
+        else:
+            print name, len(b)
+
+
 class IteratorSampler:
     def __init__(self, batch_iterators):
         self.batch_iterators = batch_iterators
@@ -815,6 +957,23 @@ class ExperimentFiles(object):
         return self._results_dir
 
 
+class ModelStorage(object):
+    def __init__(self, model_dirpath, model_weight_filename="best_model.weights.h5"):
+        self.best_score = None
+        self.best_epoch = None
+        self.best_model_filepath = os.path.join(model_dirpath, model_weight_filename)
+
+    def save_best(self, model, score, epoch):
+        if self.best_score is None or score > self.best_score:
+            print "Save new best model at epoch {} with score {}.".format(epoch, score)
+            self.best_score = score
+            self.best_epoch = epoch
+            model.save_weights(self.best_model_filepath)
+            return True
+
+        return False
+
+
 # def _get_colors(num_colors):
 # 	colors = []
 # 	for i in np.arange(0., 360., 360. / num_colors):
@@ -844,9 +1003,9 @@ def pad_to_shape(X, to_shape, padding_position, value, mask=False):
     padding_value = numpy.array(value)
     pad_shape = [to_shape[0] - len(X)] + to_shape[1:] + [1] * padding_value.ndim
     X_pad = numpy.ones(pad_shape) * padding_value
-    print X_padded.shape, pad_shape, X_pad.shape
+    # print X_padded.shape, pad_shape, X_pad.shape
     X_pad_mask = numpy.zeros_like(X_pad)
-    print X_padding_mask.shape, X_pad_mask.shape
+    # print X_padding_mask.shape, X_pad_mask.shape
     if padding_position == "pre":
         X_padded = numpy.concatenate((X_pad, X_padded), axis=0)
 
