@@ -8,12 +8,14 @@ from nlputils import LearningTools
 __author__ = 'sjebbara'
 
 
-def distance(x, y):
-    return numpy.sqrt(numpy.sum((x - y) ** 2, axis=1))
+def distance(W, x):
+    return numpy.sqrt(numpy.sum((x - W) ** 2, axis=1))
 
 
-def cosine_distance(x, y):
-    return -numpy.dot(x, y)
+def cosine_distance(W, x):
+    W = W / numpy.expand_dims(numpy.linalg.norm(W, axis=1), axis=-1)
+    x = x / numpy.linalg.norm(x)
+    return -numpy.dot(W, x)
 
 
 def visualize_most_common_embeddings(embedding, top_k):
@@ -98,8 +100,9 @@ def print_crosslingual_analysis(W_l1, W_l2, words_l1, top_k, word2index_l1, inde
         LearningTools.log(f, "-----------")
         try:
             x = W_l1[word2index_l1[word_l1], :]
-            x = numpy.expand_dims(x, axis=0)
-            D = distance(W_l2, x)
+            # x = numpy.expand_dims(x, axis=0)
+            # D = distance(W_l2, x)
+            D = cosine_distance(W_l2, x)
             S = numpy.argsort(D)
             Iknn = S[1:top_k + 1]
             print Iknn
@@ -112,8 +115,8 @@ def print_crosslingual_analysis(W_l1, W_l2, words_l1, top_k, word2index_l1, inde
 
 
 def get_nearest_neighbors(W, x, top_k, index2word):
-    x = numpy.expand_dims(x, axis=0)
-    D = distance(W, x)
+    # x = numpy.expand_dims(x, axis=0)
+    D = cosine_distance(W, x)
     S = numpy.argsort(D)
     Iknn = S[1:top_k + 1]
     words_knn = [index2word[i] for i in Iknn]

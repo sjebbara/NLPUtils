@@ -120,7 +120,7 @@ class Configuration(dict):
         d = ujson.loads(conf_str)
         conf = Configuration(d)
         return conf
-    
+
 
 class CorpusWrapper:
     def __init__(self):
@@ -1243,7 +1243,7 @@ def load_as_list(filepath, to_object=None, filter=None, encoding="utf-8"):
     s = list()
     with io.open(filepath, encoding=encoding) as f:
         for line in f:
-            line = line.strip()
+            line = line.rstrip()
             if filter is None or filter(line):
                 if to_object:
                     obj = to_object(line)
@@ -1257,7 +1257,7 @@ def load_as_set(filepath, to_object=None, filter=None, encoding="utf-8"):
     s = set()
     with io.open(filepath, encoding=encoding) as f:
         for line in f:
-            element = line.strip()
+            element = line.rstrip()
             if filter is None or filter(element):
                 if to_object:
                     element = to_object(element)
@@ -1269,7 +1269,7 @@ def load_as_dict(filepath, sep=" ", to_key_value=None):
     s = dict()
     with io.open(filepath, encoding="utf-8") as f:
         for i, line in enumerate(f):
-            line = line.strip()
+            line = line.rstrip()
             if to_key_value:
                 key, value = to_key_value(line)
             else:
@@ -1286,7 +1286,7 @@ def load_as_counter(filepath, sep=" ", to_key_value=None, skip_errors=False):
     s = Counter()
     with io.open(filepath, encoding="utf-8") as f:
         for i, line in enumerate(f):
-            line = line.strip()
+            line = line.rstrip()
             if to_key_value:
                 key, value = to_key_value(line)
             else:

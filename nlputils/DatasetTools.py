@@ -113,6 +113,26 @@ class VectorizerUnion(Vectorizer):
         return self
 
 
+class ZipVectorizer(Vectorizer):
+    def __init__(self, previous_vectorizers=None, **kwargs):
+        super(ZipVectorizer, self).__init__(**kwargs)
+
+        if previous_vectorizers:
+            self.previous_vectorizers = previous_vectorizers
+        else:
+            self.previous_vectorizers = []
+
+    def transform(self, X):
+        T = [v.transform(X) for v in self.previous_vectorizers]
+        return zip(*T)
+
+    def __call__(self, previous_vectorizers):
+        if len(self.previous_vectorizers) > 0:
+            print "Warning: Override previously assigned vectorizer:", previous_vectorizers
+        self.previous_vectorizers = previous_vectorizers
+        return self
+
+
 class LambdaVectorizer(Vectorizer):
     def __init__(self, instance_function, **kwargs):
         super(LambdaVectorizer, self).__init__(**kwargs)
