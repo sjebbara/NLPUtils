@@ -2,6 +2,141 @@ import numpy
 import LearningTools
 
 
+def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=None, verbose=1, prefix=None):
+    train_log = LearningTools.TrainingTimer()
+    train_log.init(1, n_instances)
+
+    batch_generator = BatchGenerator(instances, batch_size, vectorizer=vectorizer, raw_data_name=raw_data_name)
+    for i, batches in enumerate(batch_generator):
+        actual_batch_size = len(batches[raw_data_name])
+        if verbose >= 1:
+            if prefix is not None:
+                print prefix, train_log.time_now()
+            else:
+                print train_log.time_now()
+        if verbose >= 2:
+            print "### Train on new batches"
+            LearningTools.print_batch_shapes(batches)
+
+        model.train_on_batch(batches, batches)
+        train_log.process(actual_batch_size)
+
+        batch_iterator = BatchIterator([batches])
+        for instance in batch_iterator:
+            yield instance
+
+
+def train_multitask(model_list, instances_list, vectorizer_list, batch_size_list, raw_data_name_list=None, verbose=1,
+                    prefix=None):
+    batch_generators = [BatchGenerator(instances, batch_size, vectorizer=vectorizer, raw_data_name=raw_data_name) for
+                        instances, vectorizer, batch_size, raw_data_name in
+                        zip(instances_list, vectorizer_list, batch_size_list, raw_data_name_list)]
+    scheduler = GeneratorScheduler(batch_generators)
+    train_log = LearningTools.TrainingTimer()
+    train_log.init(1, len(scheduler))
+
+    for i, (generator_index, batches) in enumerate(scheduler):
+        model = model_list[generator_index]
+        raw_data_name = raw_data_name_list[generator_index]
+        actual_batch_size = len(batches[raw_data_name])
+        if verbose >= 1:
+            if prefix is not None:
+                print prefix, train_log.time_now()
+            else:
+                print train_log.time_now()
+        if verbose >= 2:
+            print "### Train on new batches"
+            LearningTools.print_batch_shapes(batches)
+
+        model.train_on_batch(batches, batches)
+        train_log.process(1)
+
+        batch_iterator = BatchIterator([batches])
+        for instance in batch_iterator:
+            yield generator_index, instance
+
+
+def predict(model, instances, vectorizer, batch_size, output_names, raw_data_name=None, verbose=1, prefix=None):
+    batch_generator = BatchGenerator(instances, batch_size, vectorizer=vectorizer, raw_data_name=raw_data_name)
+    for i, batches in enumerate(batch_generator):
+        if verbose >= 2:
+            if prefix is not None:
+                print prefix, "### Predict for new batches:"
+            else:
+                print "### Predict for new batches:"
+
+            LearningTools.print_batch_shapes(batches)
+
+        predictions = model.predict_on_batch(batches)
+
+        if type(predictions) is not list:
+            predictions = [predictions]
+
+        for name, pred in zip(output_names, predictions):
+            batches[name] = pred
+
+        for instance in BatchIterator([batches]):
+            yield instance
+
+
+class GeneratorScheduler:
+    def __init__(self, batch_generators):
+        self.batch_generators = batch_generators
+        self.length = sum([len(bg) for bg in self.batch_generators])
+
+    def __len__(self):
+        return self.length
+
+    def __iter__(self):
+        iterators = [iter(bi) for bi in self.batch_generators]
+        batch_counts = [0.0] * len(self.batch_generators)
+        generator_lengths = [len(bg) for bg in self.batch_generators]
+        for b in range(self.length):
+            remaining = [(1 - batch_count / generator_length, i) if generator_length > 0 else 0.0 for
+                         i, (batch_count, generator_length) in enumerate(zip(batch_counts, generator_lengths))]
+            remaining = sorted(remaining, reverse=True)
+            try:
+                _, next_generator_index = remaining[0]
+                it = iterators[next_generator_index]
+                batches = it.next()
+                batch_counts[next_generator_index] += 1
+                yield next_generator_index, batches
+            except StopIteration:
+                pass
+
+
+class GeneratorRandomScheduler:
+    def __init__(self, batch_generators):
+        self.batch_generators = batch_generators
+
+    def __iter__(self):
+        iterators = [iter(bi) for bi in self.batch_generators]
+        batch_counts = [0.0] * len(self.batch_generators)
+        generator_lengths = [float(len(bg)) for bg in self.batch_generators]
+        while True:
+            remaining_ratios = numpy.array(
+                [1 - batch_count / generator_length if generator_length > 0 else 0.0 for batch_count, generator_length
+                 in zip(batch_counts, generator_lengths)])
+            print generator_lengths
+            print batch_counts
+            print remaining_ratios
+            if numpy.sum(remaining_ratios) > 0:
+                remaining_ratios = remaining_ratios ** 2
+                prob = remaining_ratios / numpy.sum(remaining_ratios)
+                print prob
+                sampled_generator_index = numpy.random.choice(range(len(iterators)), p=prob, size=1, replace=False)[0]
+                print sampled_generator_index
+                it = iterators[sampled_generator_index]
+                try:
+                    batches = it.next()
+                    batch_counts[sampled_generator_index] += 1
+                    yield sampled_generator_index, batches
+                except StopIteration:
+                    pass
+            else:
+                break
+
+
 class BatchIterator:
     def __init__(self, named_batch_iterable):
         self.iterable = named_batch_iterable
@@ -27,12 +162,28 @@ class BatchIterator:
 class BatchGenerator:
     RAW_DATA_BATCH_NAME = "raw_data"
 
-    def __init__(self, iterable, batch_size=1, vectorizer=None, raw_data_name=None, return_raw_data_batch=False):
+    def __init__(self, iterable, batch_size=1, vectorizer=None, raw_data_name=None, return_raw_data_batch=False,
+                 n_instances=None):
         self.iterable = iterable
         self.batch_size = batch_size
         self.vectorizer = vectorizer
         self.return_raw_data_batch = return_raw_data_batch
         self.raw_data_name = raw_data_name
+        self.n_instances = n_instances
+
+    def __len__(self):
+        try:
+            length = len(self.iterable)
+        except TypeError as e:
+            if self.n_instances is not None:
+                length = self.n_instances
+            else:
+                raise TypeError(
+                    "BatchGenerator does not know its length. Pass 'iterable' with len-function or specify 'n_instances'.")
+
+        n_batches = numpy.ceil(float(length) / self.batch_size)
+        n_batches = int(n_batches)
+        return n_batches
 
     def __iter__(self):
         batch = []
@@ -314,13 +465,17 @@ class PaddingVectorizer(Vectorizer):
 
 
 class PaddingVectorizer1D(Vectorizer):
-    def __init__(self, padding_value, padding_position, **kwargs):
+    def __init__(self, padding_value, padding_position, max_len=None, **kwargs):
         super(PaddingVectorizer1D, self).__init__(**kwargs)
         self.padding_value = padding_value
         self.padding_position = padding_position
+        self.max_len = max_len
 
     def _transform_batch(self, X):
-        max_len = max(len(x) for x in X)
+        if self.max_len is not None:
+            max_len = self.max_len
+        else:
+            max_len = max(len(x) for x in X)
 
         if self.padding_position == "pre":
             X_padded = [[self.padding_value] * (max_len - len(x)) + x for x in X]

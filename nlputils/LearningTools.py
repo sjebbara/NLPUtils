@@ -816,9 +816,11 @@ class NamedMultiBatchIterator:
 def print_batch_shapes(batches):
     for name, b in batches.items():
         if hasattr(b, "shape"):
-            print name, b.shape
+            shape = b.shape
         else:
-            print name, len(b)
+            shape = len(b)
+
+        print "'{}': {}".format(name, shape)
 
 
 class IteratorSampler:

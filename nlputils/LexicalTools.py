@@ -24,12 +24,12 @@ tokenization_patterns["advanced2-no-punc"] = re.compile("\d+[./]\d+|\w+[-']\w+|\
 tokenization_patterns["advanced3"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+", re.UNICODE)
 
 tagger = nltk.tag.StanfordPOSTagger(
-    os.path.expanduser('~/programs/stanford-postagger-2015-04-20/models/english-left3words-distsim.tagger'),
-    path_to_jar=os.path.expanduser("~/programs/stanford-postagger-2015-04-20/stanford-postagger.jar"))
+    os.path.expanduser('~/programs/stanford-postagger-2016-10-31/models/english-left3words-distsim.tagger'),
+    path_to_jar=os.path.expanduser("~/programs/stanford-postagger-2016-10-31/stanford-postagger.jar"))
 
-stanford_sentence_splitter = nltk.tokenize.stanford.StanfordTokenizer(
-    "/homes/sjebbara/programs/stanford-corenlp-full-2015-12-09/stanford-corenlp-3.6.0.jar")
-sentence_splitter = nltk.tokenize.PunktSentenceTokenizer()
+# stanford_sentence_splitter = nltk.tokenize.stanford.StanfordTokenizer(
+#     os.path.expanduser("~/programs/stanford-corenlp-full-2015-12-09/stanford-corenlp-3.6.0.jar"))
+# sentence_splitter = nltk.tokenize.PunktSentenceTokenizer()
 sentence_boundary_regex = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|!)(\s+|\b)(?!\d)")
 
 index2pos = []

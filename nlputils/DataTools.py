@@ -394,6 +394,22 @@ class Embedding:
         self.vocabulary = Vocabulary()
         self.vocabulary.load(vocab_filepath)
 
+    def load_plain_text_file(self, filepath, top_k=None):
+        words = []
+        vectors = []
+        with io.open(filepath) as f:
+            for line in f:
+                if len(words) >= top_k:
+                    break
+                parts = line.split(" ")
+                words.append(parts[0])
+                vectors.append(map(float, parts[1:]))
+
+        vectors = numpy.array(vectors)
+        vocabulary = Vocabulary()
+        vocabulary.init_from_word_list(words)
+        self.init(vocabulary, vectors)
+
     def add(self, word, index=None, vector=None, vector_init=None):
         if vector is None:
             if vector_init == "zeros":
