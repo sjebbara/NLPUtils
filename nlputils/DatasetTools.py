@@ -244,7 +244,6 @@ class Vectorizer(object):
 class VectorizerUnion(Vectorizer):
     def __init__(self, previous_vectorizers=None, **kwargs):
         super(VectorizerUnion, self).__init__(**kwargs)
-
         if previous_vectorizers:
             self.previous_vectorizers = dict(previous_vectorizers)
         else:
@@ -252,15 +251,18 @@ class VectorizerUnion(Vectorizer):
 
     def transform(self, X):
         T = LearningTools.BetterDict()
-        for name, vectorizer in self.previous_vectorizers.iteritems():
-            T[name] = vectorizer.transform(X)
+        for name, (vectorizer, to_array) in self.previous_vectorizers.iteritems():
+            tmp = vectorizer.transform(X)
+            if to_array:
+                tmp = numpy.array(tmp)
+            T[name] = tmp
         return T
 
-    def __call__(self, name, previous_vectorizer):
+    def __call__(self, name, previous_vectorizer, to_array=True):
         assert isinstance(previous_vectorizer, Vectorizer)
         if name in self.previous_vectorizers:
             print "Warning: Override previously assigned vectorizer:", name, self.previous_vectorizers[name].name
-        self.previous_vectorizers[name] = previous_vectorizer
+        self.previous_vectorizers[name] = (previous_vectorizer, to_array)
         return self
 
 
@@ -294,6 +296,36 @@ class LambdaVectorizer(Vectorizer):
             return self.instance_function(x)
         else:
             return x
+
+
+class LambdaBatchVectorizer(Vectorizer):
+    def __init__(self, batch_function, **kwargs):
+        super(LambdaBatchVectorizer, self).__init__(**kwargs)
+        self.batch_function = batch_function
+
+    def _transform_batch(self, X):
+        if self.batch_function:
+            return self.batch_function(X)
+        else:
+            return X
+
+
+class PrintVectorizer(Vectorizer):
+    def __init__(self, instance_text_function=None, batch_text_function=None, **kwargs):
+        super(PrintVectorizer, self).__init__(**kwargs)
+        self.instance_text_function = instance_text_function
+        self.batch_text_function = batch_text_function
+
+    def _transform_instance(self, x):
+        if self.instance_text_function is not None:
+            print self.instance_text_function(x)
+        return x
+
+    def _transform_batch(self, X):
+        X = super(PrintVectorizer, self)._transform_batch(X)
+        if self.batch_text_function is not None:
+            print self.batch_text_function(X)
+        return X
 
 
 class IteratorVectorizer(Vectorizer):
@@ -459,9 +491,15 @@ class PaddingVectorizer(Vectorizer):
         self.padding_position = padding_position
 
     def _transform_batch(self, X):
-        X_padded = LearningTools.pad(X, self.padding_position, self.padding_value)
-        X_padded = X_padded.astype(int)
+        X_padded = pad(X, self.padding_position, self.padding_value)
+        # X_padded = numpy.array(X_padded)
+        # X_padded = X_padded.astype(int)
         return X_padded
+
+
+class NumpyCastVectorizer(LambdaBatchVectorizer):
+    def __init__(self, type="int", **kwargs):
+        super(NumpyCastVectorizer, self).__init__(lambda B: numpy.array(B, dtype=type), **kwargs)
 
 
 class PaddingVectorizer1D(Vectorizer):
@@ -487,3 +525,40 @@ class PaddingVectorizer1D(Vectorizer):
 class VocabularyPaddingVectorizer(PaddingVectorizer):
     def __init__(self, vocabulary, padding_position):
         super(VocabularyPaddingVectorizer, self).__init__(vocabulary.padding_index, padding_position)
+
+
+def _get_padding(shape, value):
+    padding = value
+    for d in shape[::-1]:
+        padding = [padding] * d
+    return padding
+
+
+def pad_to_shape(X, to_shape, padding_position, value):
+    to_shape = list(to_shape)
+    X_padded_elements = []
+
+    if len(to_shape) == 1:
+        # print "bottom reached"
+        X_padded_elements = X
+    else:
+        # print "pad subelements..."
+        for x in X:
+            X_padded_element = pad_to_shape(x, to_shape[1:], padding_position, value)
+            X_padded_elements.append(X_padded_element)
+
+    # print "padded elements!"
+    padding_shape = [to_shape[0] - len(X_padded_elements)] + to_shape[1:]
+    X_padding = _get_padding(padding_shape, value)
+
+    if padding_position == "pre":
+        X_padded = X_padding + X_padded_elements
+    elif padding_position == "post":
+        X_padded = X_padded_elements + X_padding
+    # print "padding for shape", to_shape, "done"
+    return X_padded
+
+
+def pad(X, padding_position, value):
+    shape = LearningTools.get_padding_shape(X)
+    return pad_to_shape(X, shape, padding_position, value)
