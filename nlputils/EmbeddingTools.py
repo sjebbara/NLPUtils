@@ -62,3 +62,21 @@ def similarity_of_phrases(w2v, phrase1, phrase2):
 
 def cosine_similarity(v1, v2):
     return numpy.dot(v1, v2) / (numpy.linalg.norm(v1) * numpy.linalg.norm(v2))
+
+
+def _mse_distance(W, x):
+    return numpy.mean((x - W) ** 2, axis=1)
+
+
+def _cosine_distance(W, x):
+    W = W / numpy.expand_dims(numpy.linalg.norm(W, axis=1), axis=-1)
+    x = x / numpy.linalg.norm(x)
+    return -numpy.dot(W, x)
+
+
+def get_nearest_neighbors(W, x, top_k, index2word):
+    D = _mse_distance(W, x)
+    S = numpy.argsort(D)
+    Iknn = S[1:top_k + 1]
+    words_knn = [index2word[i] for i in Iknn]
+    return zip(words_knn, W[Iknn, :])

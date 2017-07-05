@@ -399,7 +399,7 @@ class Embedding:
         vectors = []
         with io.open(filepath) as f:
             for line in f:
-                if len(words) >= top_k:
+                if top_k is not None and len(words) >= top_k:
                     break
                 parts = line.split(" ")
                 words.append(parts[0])

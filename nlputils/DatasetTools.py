@@ -2,7 +2,8 @@ import numpy
 import LearningTools
 
 
-def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=None, verbose=1, prefix=None):
+def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=None, verbose=1, prefix=None,
+          sample_weight_fn=None):
     train_log = LearningTools.TrainingTimer()
     train_log.init(1, n_instances)
 
@@ -17,10 +18,18 @@ def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=N
         if verbose >= 2:
             print "### Train on new batches"
             LearningTools.print_batch_shapes(batches)
+        if verbose >= 3:
+            print batches
 
-        model.train_on_batch(batches, batches)
+        if sample_weight_fn is not None:
+            sample_weight_batch = sample_weight_fn(batches)
+        else:
+            sample_weight_batch = None
+
+        losses = model.train_on_batch(batches, batches, sample_weight=sample_weight_batch)
+        if verbose >= 1:
+            print losses
         train_log.process(actual_batch_size)
-
         batch_iterator = BatchIterator([batches])
         for instance in batch_iterator:
             yield instance

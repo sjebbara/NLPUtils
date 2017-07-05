@@ -23,10 +23,6 @@ tokenization_patterns["advanced2"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+|[^\w\
 tokenization_patterns["advanced2-no-punc"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+|[^\w\s]", re.UNICODE)
 tokenization_patterns["advanced3"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+", re.UNICODE)
 
-tagger = nltk.tag.StanfordPOSTagger(
-    os.path.expanduser('~/programs/stanford-postagger-2016-10-31/models/english-left3words-distsim.tagger'),
-    path_to_jar=os.path.expanduser("~/programs/stanford-postagger-2016-10-31/stanford-postagger.jar"))
-
 # stanford_sentence_splitter = nltk.tokenize.stanford.StanfordTokenizer(
 #     os.path.expanduser("~/programs/stanford-corenlp-full-2015-12-09/stanford-corenlp-3.6.0.jar"))
 # sentence_splitter = nltk.tokenize.PunktSentenceTokenizer()
@@ -88,6 +84,7 @@ whitespace_reduce_regex = re.compile(r"\s+")
 whitespace_regex = re.compile(r"\s")
 
 simple_url_regex = re.compile("(https?|ftp):\/\/[^\s/$.?#].[^\s]*")
+
 
 def lower(x):
     return x.lower()
@@ -179,7 +176,14 @@ def is_punctuation(token):
     return is_punctuation_regex.match(token) is not None
 
 
+def _get_pos_tagger():
+    return nltk.tag.StanfordPOSTagger(
+        "/homes/sjebbara/programs/stanford-postagger-2017-06-09/models/english-bidirectional-distsim.tagger",
+        path_to_jar="/homes/sjebbara/programs/stanford-postagger-2017-06-09/stanford-postagger.jar")
+
+
 def get_pos_tags(sentences, as_index=True):
+    tagger = _get_pos_tagger()
     tagged_sentences = tagger.tag_sents(sentences)
 
     if as_index:
@@ -223,3 +227,15 @@ def filter_stopwords(stopwords, starts, ends, tokens):
 
 def get_n_grams(tokens, n):
     return zip(*[tokens[i:] for i in range(n)])
+
+
+negation_words = set("no cannot not none nothing nowhere neither nor never nobody hardly scarcely barely".split())
+
+
+def is_negation(token):
+    if token in negation_words:
+        return True
+    elif token.endswith("'nt"):
+        return True
+    else:
+        return False
