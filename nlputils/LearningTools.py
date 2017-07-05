@@ -2,7 +2,7 @@ import gzip
 import io
 import pylab
 import re
-
+import itertools
 import datetime
 import ujson
 from colorama import Fore
@@ -330,27 +330,16 @@ class TrainingLogger(object):
             self.last_sample = sample
 
 
-class ScorePlot:
-    def __init__(self, title, n_cross_validation, n_epochs, range=None, figsize=None, plot_types=None):
+class ScorePlot(object):
+    DEFAULT_PLOT_TYPE = "Score"
+
+    def __init__(self, title, n_cross_validation, n_epochs, range=None, figsize=None):
         self.color_start = 0.5
         self.cmap = matplotlib.cm.get_cmap('gist_ncar')
-        if plot_types is None:
-            self.scores = numpy.zeros((n_cross_validation, n_epochs)) * float("nan")
-        else:
-            self.scores = dict()
-            self.lines = dict()
-            self.colors = dict()
-        # self.scores = dict((t, numpy.zeros((n_cross_validation, n_epochs)) * float("nan")) for t in plot_types)
-        # colors = ["black", "#00bb00", "#bb00bb", "red", "#00bbbb", "#bbbb00", "blue", "#bb0000"]
-        # if len(colors) < len(plot_types):
-        # 	colors = itertools.cycle(colors)
-        # lines = ["-", "--", "-.", ":"]
-        # self.colors = dict((t, c) for t, c in zip(plot_types, colors))
-        #
-        # if len(lines) < len(plot_types):
-        # 	lines = itertools.cycle(lines)
-        # self.lines = dict((t, c) for t, c in zip(plot_types, lines))
-        self.n_cross_validation = n_cross_validation
+        self.scores = dict()
+        self.lines = dict()
+        self.colors = dict()
+        self.n_experiments = n_cross_validation
         self.n_epochs = n_epochs
         self.markers = list(matplotlib.markers.MarkerStyle.filled_markers)
         self.markers.remove("s")
@@ -366,16 +355,12 @@ class ScorePlot:
             self.range = (0, 1)
 
     def _get_color(self):
-
-        # cmap = matplotlib.cm.get_cmap('nipy_spectral')
-        # r = lambda: numpy.random.randint(0, 255)
-        # c = '#%02X%02X%02X' % (r(), r(), r())
         x = (self.color_start + len(self.scores) * 0.41) % 0.9
         return self.cmap(x)
 
-    def init_plot_type(self, plot_type):
+    def _init_plot_type(self, plot_type):
         c = self._get_color()
-        self.scores[plot_type] = numpy.zeros((self.n_cross_validation, self.n_epochs)) * float("nan")
+        self.scores[plot_type] = numpy.zeros((self.n_experiments, self.n_epochs)) * float("nan")
         self.colors[plot_type] = c
         self.lines[plot_type] = numpy.random.choice(["-", "--", "-.", ":"], 1)[0]
 
@@ -383,10 +368,10 @@ class ScorePlot:
         self.fig.set_size_inches(8, 6)
         self.fig.savefig(filepath, dpi=200)
 
-    def add(self, n, e, score, plot_type=None):
-        if plot_type is not None:
-            if plot_type not in self.scores:
-                self.init_plot_type(plot_type)
+    def add(self, n, e, score, plot_type=DEFAULT_PLOT_TYPE):
+        if plot_type not in self.scores:
+            self._init_plot_type(plot_type)
+
         if not math.isnan(score):
             self.ax.clear()
 
@@ -395,39 +380,24 @@ class ScorePlot:
             plt.grid()
             plt.ion()
 
-            if plot_type is None:
-                self.scores[n, e] = score
-                for n_prime in range(self.n_cross_validation):
-                    self.ax.plot(range(1, self.n_epochs + 1), self.scores[n_prime, :], color="black",
-                                 marker=self.markers[n_prime], label="score")
+            self.scores[plot_type][n, e] = score
+            for pt, scores in self.scores.iteritems():
+                scores = self.scores[pt]
+                color = self.colors[pt]
+                for n_prime in range(self.n_experiments):
+                    # only add label to first of its lines to keep legend small
+                    self.ax.plot(range(1, self.n_epochs + 1), scores[n_prime, :], color=color,
+                                 marker=self.markers[n_prime], label=pt if n_prime == 0 else None)
+            for pt, scores in self.scores.iteritems():
+                line = self.lines[pt]
+                color = self.colors[pt]
+                means = numpy.nanmean(scores, axis=0)
+                self.ax.plot(range(1, self.n_epochs + 1), means, color=color, linewidth=3, marker="s")
 
-                means = numpy.nanmean(self.scores, axis=0)
-                self.ax.plot(range(1, self.n_epochs + 1), means, linewidth=2, color="red", marker="s",
-                             label="avrg. score")
                 mx = numpy.nanmax(means)
                 if not numpy.isnan(mx):
-                    self.ax.plot([1, self.n_epochs + 1], [mx, mx], linewidth=2, color="red", label="max. score")
-                    self.ax.text(self.n_epochs - 2, mx, "{:.4f}".format(mx), fontsize=13, color="red")
-
-            else:
-                self.scores[plot_type][n, e] = score
-                for pt, scores in self.scores.iteritems():
-                    scores = self.scores[pt]
-                    color = self.colors[pt]
-                    for n_prime in range(self.n_cross_validation):
-                        # only add label to first of its lines to keep legend small
-                        self.ax.plot(range(1, self.n_epochs + 1), scores[n_prime, :], color=color,
-                                     marker=self.markers[n_prime], label=pt if n_prime == 0 else None)
-                for pt, scores in self.scores.iteritems():
-                    line = self.lines[pt]
-                    color = self.colors[pt]
-                    means = numpy.nanmean(scores, axis=0)
-                    self.ax.plot(range(1, self.n_epochs + 1), means, color=color, linewidth=3, marker="s")
-
-                    mx = numpy.nanmax(means)
-                    if not numpy.isnan(mx):
-                        self.ax.plot([1, self.n_epochs + 1], [mx, mx], linestyle=line, linewidth=1, color=color)
-                        self.ax.text(self.n_epochs * 0.95, mx, "{:.4f}".format(mx), fontsize=13, color=color)
+                    self.ax.plot([1, self.n_epochs + 1], [mx, mx], linestyle=line, linewidth=1, color=color)
+                    self.ax.text(self.n_epochs * 0.95, mx, "{:.4f}".format(mx), fontsize=13, color=color)
 
             plt.legend(loc=4)
             # plt.legend(loc=4, bbox_to_anchor=(0.5, -0.1))
@@ -1080,7 +1050,7 @@ def get_padding_shape(X):
             if len(padding_shape_x) == 0:
                 padding_shape_x = padding_shape_x_new
             else:
-                padding_shape_x = map(max, zip(padding_shape_x, padding_shape_x_new))
+                padding_shape_x = map(max, itertools.izip_longest(padding_shape_x, padding_shape_x_new, fillvalue=0))
     return [len(X)] + padding_shape_x
 
 
