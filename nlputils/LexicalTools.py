@@ -225,7 +225,10 @@ def filter_stopwords(stopwords, starts, ends, tokens):
     return starts_filtered, ends_filtered, tokens_filtered
 
 
-def get_n_grams(tokens, n):
+def get_n_grams(tokens, n, pad_start=None, pad_end=None):
+    start_padding = [pad_start] * (n - 1) * (pad_start is not None)
+    end_padding = [pad_end] * (n - 1) * (pad_end is not None)
+    tokens = start_padding + tokens + end_padding
     return zip(*[tokens[i:] for i in range(n)])
 
 
@@ -239,3 +242,8 @@ def is_negation(token):
         return True
     else:
         return False
+
+
+def get_character_word_ngrams(tokens, n, pad_start=None, pad_end=None):
+    char_ngrams = [get_n_grams(list(t), n, pad_start, pad_end) for t in tokens]
+    return char_ngrams
