@@ -1,23 +1,24 @@
 import gzip
 import io
+import functools
 import pylab
 import re
 import itertools
 import datetime
 import ujson
-from colorama import Fore
 import numpy
 import scipy
 import os
 import math
-from collections import Counter
 import time
 import EvaluationTools
 import matplotlib
 import matplotlib.markers
 import matplotlib.pyplot as plt
 import pprint
-from bokeh.plotting import figure, output_file, show
+import six
+from collections import Counter
+from colorama import Fore
 
 __author__ = 'sjebbara'
 
@@ -184,7 +185,7 @@ class CrossValidationEvaluation:
         for ex in self.experiments:
             scores.append(ex.get_scores(data_sample_filter))
         scores = numpy.array(scores)
-        print scores.shape
+        print(scores.shape)
         mean_accuracies = numpy.mean(scores[:, :, 0], axis=2)
         best_snapshot = numpy.argmax(mean_accuracies, axis=1)
         best_acc, best_cor, best_inc = scores[best_snapshot]
@@ -192,12 +193,12 @@ class CrossValidationEvaluation:
 
     def print_accuracy_last(self, data_sample_filter=None):
         avrg_acc, avrg_cor, avrg_inc, scores = self.accuracy_last(data_sample_filter)
-        print "Accuracy: {:.3f}; Correct: {:.3f}; Incorrect: {:.3f}".format(avrg_acc, avrg_cor, avrg_inc)
-        print "MEAN: [{:.3f}, {:.3f}, {:.3f}]".format(*numpy.mean(scores, axis=0))
-        print "STD: [{:.5f}, {:.2f}, {:.2f}]".format(*numpy.std(scores, axis=0))
-        print "VAR: [{:.5f}, {:.2f}, {:.2f}]".format(*numpy.var(scores, axis=0))
+        print("Accuracy: {:.3f}; Correct: {:.3f}; Incorrect: {:.3f}".format(avrg_acc, avrg_cor, avrg_inc))
+        print("MEAN: [{:.3f}, {:.3f}, {:.3f}]".format(*numpy.mean(scores, axis=0)))
+        print("STD: [{:.5f}, {:.2f}, {:.2f}]".format(*numpy.std(scores, axis=0)))
+        print("VAR: [{:.5f}, {:.2f}, {:.2f}]".format(*numpy.var(scores, axis=0)))
         for acc, cor, inc in scores:
-            print "[{:.3f}, {:.0f}, {:.0f}]".format(acc, cor, inc)
+            print("[{:.3f}, {:.0f}, {:.0f}]".format(acc, cor, inc))
 
 
 class ExperimentEvaluation:
@@ -230,7 +231,7 @@ class ExperimentEvaluation:
 
     def print_accuracy(self, data_sample_filter=None):
         avrg_acc, avrg_cor, avrg_inc = self.accuracy_last(data_sample_filter)
-        print "Accuracy: {:.3f}; Correct: {:.3f}; Incorrect: {:.3f}".format(avrg_acc, avrg_cor, avrg_inc)
+        print("Accuracy: {:.3f}; Correct: {:.3f}; Incorrect: {:.3f}".format(avrg_acc, avrg_cor, avrg_inc))
 
 
 class ExperimentSnapshotEvaluation:
@@ -402,7 +403,7 @@ class ScorePlot(object):
             plt.legend(loc=4)
             # plt.legend(loc=4, bbox_to_anchor=(0.5, -0.1))
             self.fig.tight_layout()
-            plt.draw()
+            # plt.draw()
             plt.show()
             plt.pause(0.0001)
 
@@ -413,9 +414,9 @@ class ScorePlot(object):
             plot_types = self.scores.keys()
 
         for pt in plot_types:
-            print "#####", pt, "#####"
-            print zip(numpy.argmax(self.scores[pt], axis=1), numpy.max(self.scores[pt], axis=1))
-            print self.scores[pt]
+            print("#####", pt, "#####")
+            print(zip(numpy.argmax(self.scores[pt], axis=1), numpy.max(self.scores[pt], axis=1)))
+            print(self.scores[pt])
 
 
 class AttentionPlot:
@@ -527,7 +528,7 @@ class AttentionPlot:
         self.show()
         self.plot_next()
         while True:
-            input_data = raw_input("Press 'a' for previous, 'd' for next continue, or 'x' to exit:\n")
+            input_data = input("Press 'a' for previous, 'd' for next continue, or 'x' to exit:\n")
             if input_data == "a":
                 self.plot_previous()
             if input_data == "d":
@@ -585,7 +586,7 @@ class IterablePlotter:
         self.show()
         self.plot_next()
         while True:
-            input_data = raw_input("Press 'a' for previous, 'd' for next continue, or 'x' to exit:\n")
+            input_data = six.moves.input("Press 'a' for previous, 'd' for next continue, or 'x' to exit:\n")
             if input_data == "a":
                 self.plot_previous()
             if input_data == "d":
@@ -609,10 +610,10 @@ class BatchIterator:
     # print "init iterator"
 
     def __iter__(self):
-        for ndx in xrange(0, self.iterable_size, self.batch_size):
+        for ndx in range(0, self.iterable_size, self.batch_size):
             elements = self.iterable[ndx:min(ndx + self.batch_size, self.iterable_size)]
             if self.vectorizer:
-                batch = numpy.array(reduce(lambda seq, elem: seq + self.vectorizer(elem), elements, []))
+                batch = numpy.array(functools.reduce(lambda seq, elem: seq + self.vectorizer(elem), elements, []))
             else:
                 batch = elements
 
@@ -645,7 +646,7 @@ class BatchGenerator:
 
     def process_batch(self, elements):
         if self.vectorizer:
-            batch = numpy.array(reduce(lambda seq, elem: seq + self.vectorizer(elem), elements, []))
+            batch = numpy.array(functools.reduce(lambda seq, elem: seq + self.vectorizer(elem), elements, []))
         else:
             batch = elements
 
@@ -790,7 +791,7 @@ def print_batch_shapes(batches):
         else:
             shape = len(b)
 
-        print "'{}': {}".format(name, shape)
+        print("'{}': {}".format(name, shape))
 
 
 class IteratorSampler:
@@ -800,7 +801,8 @@ class IteratorSampler:
     def __iter__(self):
         iterators = [iter(bi) for bi in self.batch_iterators]
         while True:
-            n_non_empty_iterators = reduce(lambda acc, it: acc + (it.data_index < it.n_data), self.batch_iterators, 0)
+            n_non_empty_iterators = functools.reduce(lambda acc, it: acc + (it.data_index < it.n_data),
+                                                     self.batch_iterators, 0)
             if n_non_empty_iterators > 0:
                 processed = numpy.array(
                     [1 - float(it.data_index) / it.n_data if it.n_data > 0 else 0 for it in self.batch_iterators])
@@ -853,7 +855,7 @@ class Writer(object):
             self.current_dir_count += 1
             self.current_file_count = 0
             if self.verbose:
-                print "Open new directory: ", self.current_dir_count
+                print("Open new directory: ", self.current_dir_count)
 
         dirpath = os.path.join(self.dirpath, str(self.current_dir_count))
         if not os.path.exists(dirpath):
@@ -937,7 +939,7 @@ class ModelStorage(object):
 
     def save_best(self, model, score, epoch):
         if self.best_score is None or score > self.best_score:
-            print "Save new best model at epoch {} with score {}.".format(epoch, score)
+            print("Save new best model at epoch {} with score {}.".format(epoch, score))
             self.best_score = score
             self.best_epoch = epoch
             model.save_weights(self.best_model_filepath)
@@ -1071,7 +1073,7 @@ def save_model(model, model_name, model_dir):
             json_string = model.to_json()
             f.write(json_string)
     except TypeError as e:
-        print e
+        print(e)
 
     model.save_weights(model_dir + model_name + '.keras.weights.h5', overwrite=True)
 
@@ -1138,11 +1140,7 @@ def load_model(model_name, model_dir):
 
 def log(file, text, file_only=False):
     if file:
-        if type(text) == str:
-            text = text.decode("utf-8")
-        if type(text) == unicode:
-            pass
-        file.write(text + u"\n")
+        file.write(text + "\n")
     if not file_only:
         print(text)
 
@@ -1247,7 +1245,7 @@ def load_as_dict(filepath, sep=" ", to_key_value=None):
             else:
                 parts = line.split(sep)
                 if len(parts) != 2:
-                    print "ERROR in line %s: %s" % (i, line)
+                    print("ERROR in line %s: %s" % (i, line))
                 key, value = parts
 
             s[key] = value
@@ -1264,8 +1262,8 @@ def load_as_counter(filepath, sep=" ", to_key_value=None, skip_errors=False):
             else:
                 parts = line.split(sep)
                 if len(parts) != 2:
-                    print "ERROR in line %s: %s" % (i, line)
-                    print "ERROR %s parts: %s" % (len(parts), parts)
+                    print("ERROR in line %s: %s" % (i, line))
+                    print("ERROR %s parts: %s" % (len(parts), parts))
                     if skip_errors:
                         continue
                 key, value = parts
@@ -1292,7 +1290,8 @@ def colorize(text, flag):
     return (Fore.GREEN if flag else Fore.RED) + str(text) + Fore.RESET
 
 
-def plot_simple_word_attention_function(ax, (words, attention)):
+def plot_simple_word_attention_function(ax, data):
+    words, attention = data
     N = len(words)
     barlist = ax.bar(numpy.arange(N), attention)
     ax.set_xticks(numpy.arange(N) + 2. / 5.)
@@ -1301,7 +1300,8 @@ def plot_simple_word_attention_function(ax, (words, attention)):
     ax.set_xticklabels(words, rotation=30)
 
 
-def plot_k_word_attention_function(ax, (words, attentions)):
+def plot_k_word_attention_function(ax, data):
+    words, attentions = data
     colors = ["r", "b", "g", "y", "c", "m", "k", "#990000", "#009900", "#000099", "#ff9922"]
     N = len(words)
     width = 0.8 / len(attentions)

@@ -11,11 +11,11 @@ def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=N
         actual_batch_size = len(batches[raw_data_name])
         if verbose >= 1:
             if prefix is not None:
-                print prefix, train_log.time_now()
+                print(prefix, train_log.time_now())
             else:
-                print train_log.time_now()
+                print(train_log.time_now())
         if verbose >= 2:
-            print "### Train on new batches"
+            print("### Train on new batches")
             LearningTools.print_batch_shapes(batches)
 
         model.train_on_batch(batches, batches)
@@ -41,11 +41,11 @@ def train_multitask(model_list, instances_list, vectorizer_list, batch_size_list
         actual_batch_size = len(batches[raw_data_name])
         if verbose >= 1:
             if prefix is not None:
-                print prefix, train_log.time_now()
+                print(prefix, train_log.time_now())
             else:
-                print train_log.time_now()
+                print(train_log.time_now())
         if verbose >= 2:
-            print "### Train on new batches"
+            print("### Train on new batches")
             LearningTools.print_batch_shapes(batches)
 
         model.train_on_batch(batches, batches)
@@ -61,9 +61,9 @@ def predict(model, instances, vectorizer, batch_size, output_names, raw_data_nam
     for i, batches in enumerate(batch_generator):
         if verbose >= 2:
             if prefix is not None:
-                print prefix, "### Predict for new batches:"
+                print(prefix, "### Predict for new batches:")
             else:
-                print "### Predict for new batches:"
+                print("### Predict for new batches:")
 
             LearningTools.print_batch_shapes(batches)
 
@@ -117,15 +117,15 @@ class GeneratorRandomScheduler:
             remaining_ratios = numpy.array(
                 [1 - batch_count / generator_length if generator_length > 0 else 0.0 for batch_count, generator_length
                  in zip(batch_counts, generator_lengths)])
-            print generator_lengths
-            print batch_counts
-            print remaining_ratios
+            print(generator_lengths)
+            print(batch_counts)
+            print(remaining_ratios)
             if numpy.sum(remaining_ratios) > 0:
                 remaining_ratios = remaining_ratios ** 2
                 prob = remaining_ratios / numpy.sum(remaining_ratios)
-                print prob
+                print(prob)
                 sampled_generator_index = numpy.random.choice(range(len(iterators)), p=prob, size=1, replace=False)[0]
-                print sampled_generator_index
+                print(sampled_generator_index)
                 it = iterators[sampled_generator_index]
                 try:
                     batches = it.next()
@@ -234,11 +234,27 @@ class Vectorizer(object):
         return T
 
     def __call__(self, previous_vectorizer):
-        assert isinstance(previous_vectorizer, Vectorizer)
+        # assert isinstance(previous_vectorizer, Vectorizer)
         if self.previous_vectorizer:
-            print "Warning: Override previously assigned vectorizer:", self.previous_vectorizer.name
+            print("Warning: Override previously assigned vectorizer:", self.previous_vectorizer.name)
         self.previous_vectorizer = previous_vectorizer
         return self
+
+
+class VectorizerPipeline(Vectorizer):
+    def __init__(self, vectorizers=None, **kwargs):
+        super(VectorizerPipeline, self).__init__(**kwargs)
+
+        if vectorizers:
+            self.vectorizers = vectorizers
+        else:
+            self.vectorizers = []
+
+    def _transform_batch(self, X):
+        T = X
+        for v in self.vectorizers:
+            T = v.transform(T)
+        return T
 
 
 class VectorizerUnion(Vectorizer):
@@ -261,7 +277,7 @@ class VectorizerUnion(Vectorizer):
     def __call__(self, name, previous_vectorizer, to_array=True):
         assert isinstance(previous_vectorizer, Vectorizer)
         if name in self.previous_vectorizers:
-            print "Warning: Override previously assigned vectorizer:", name, self.previous_vectorizers[name].name
+            print("Warning: Override previously assigned vectorizer:", name, self.previous_vectorizers[name].name)
         self.previous_vectorizers[name] = (previous_vectorizer, to_array)
         return self
 
@@ -281,7 +297,31 @@ class ZipVectorizer(Vectorizer):
 
     def __call__(self, previous_vectorizers):
         if len(self.previous_vectorizers) > 0:
-            print "Warning: Override previously assigned vectorizer:", previous_vectorizers
+            print("Warning: Override previously assigned vectorizer:", previous_vectorizers)
+        self.previous_vectorizers = previous_vectorizers
+        return self
+
+
+class MergeVectorizer(Vectorizer):
+    def __init__(self, previous_vectorizers=None, **kwargs):
+        super(MergeVectorizer, self).__init__(**kwargs)
+
+        if previous_vectorizers:
+            self.previous_vectorizers = previous_vectorizers
+        else:
+            self.previous_vectorizers = []
+
+    def transform(self, X):
+        T = LearningTools.BetterDict()
+        for vu in self.previous_vectorizers:
+            tmp = vu.transform(X)
+            for name, T_tmp in tmp.iteritems():
+                T[name] = T_tmp
+        return T
+
+    def __call__(self, previous_vectorizers):
+        if len(self.previous_vectorizers) > 0:
+            print("Warning: Override previously assigned vectorizer:", previous_vectorizers)
         self.previous_vectorizers = previous_vectorizers
         return self
 
@@ -318,13 +358,13 @@ class PrintVectorizer(Vectorizer):
 
     def _transform_instance(self, x):
         if self.instance_text_function is not None:
-            print self.instance_text_function(x)
+            print(self.instance_text_function(x))
         return x
 
     def _transform_batch(self, X):
         X = super(PrintVectorizer, self)._transform_batch(X)
         if self.batch_text_function is not None:
-            print self.batch_text_function(X)
+            print(self.batch_text_function(X))
         return X
 
 
@@ -539,15 +579,15 @@ def pad_to_shape(X, to_shape, padding_position, value):
     X_padded_elements = []
 
     if len(to_shape) == 1:
-        # print "bottom reached"
+        # print("bottom reached")
         X_padded_elements = X
     else:
-        # print "pad subelements..."
+        # print("pad subelements...")
         for x in X:
             X_padded_element = pad_to_shape(x, to_shape[1:], padding_position, value)
             X_padded_elements.append(X_padded_element)
 
-    # print "padded elements!"
+    # print("padded elements!")
     padding_shape = [to_shape[0] - len(X_padded_elements)] + to_shape[1:]
     X_padding = _get_padding(padding_shape, value)
 
@@ -555,7 +595,7 @@ def pad_to_shape(X, to_shape, padding_position, value):
         X_padded = X_padding + X_padded_elements
     elif padding_position == "post":
         X_padded = X_padded_elements + X_padding
-    # print "padding for shape", to_shape, "done"
+    # print("padding for shape", to_shape, "done")
     return X_padded
 
 

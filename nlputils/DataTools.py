@@ -1,13 +1,11 @@
 import io
-import ujson
+import json
 import os
-from sklearn.base import BaseEstimator, TransformerMixin
-
 import numpy
+import LearningTools
+from sklearn.base import BaseEstimator, TransformerMixin
 from xml.sax.saxutils import unescape
 from collections import defaultdict, Counter
-
-import LearningTools
 
 __author__ = 'sjebbara'
 
@@ -272,12 +270,9 @@ class Vocabulary:
     def save(self, filepath):
         word_count_list = [(w, self.counts[w]) for w in self.index2word]
 
-        def to_str((w, c)):
-            if type(w) == str:
-                w = w.decode("utf-8")
-            if type(w) == unicode:
-                pass
-            return w + u" " + unicode(c)
+        def to_str(x):
+            w, c = x
+            return w + u" " + str(c)
 
         LearningTools.write_iterable(word_count_list, filepath, to_str)
 
@@ -298,7 +293,7 @@ class Vocabulary:
 
     def add(self, word, index=None):
         if word in self.word2index:
-            print "already there", word, self.word2index[word]
+            print("already there", word, self.word2index[word])
             return self.word2index[word]
         else:
             if index is None:
@@ -310,10 +305,10 @@ class Vocabulary:
 
                 if hasattr(self, "unknown_index") and self.unknown_index is not None and index <= self.unknown_index:
                     self.unknown_index += 1
-                    print "Moved {} to {}".format(self.unknown_word, self.unknown_index)
+                    print("Moved {} to {}".format(self.unknown_word, self.unknown_index))
                 if hasattr(self, "padding_index") and self.padding_index is not None and index <= self.padding_index:
                     self.padding_index += 1
-                    print "Moved {} to {}".format(self.padding_word, self.padding_index)
+                    print("Moved {} to {}".format(self.padding_word, self.padding_index))
                 return index
 
     def append(self, word):
@@ -416,13 +411,21 @@ class Embedding:
                 vector = numpy.zeros(self.W.shape[1:])
             elif vector_init == "mean":
                 vector = numpy.mean(self.W, axis=0)
+            elif vector_init == "uniform":
+                m = numpy.mean(self.W, axis=0)
+                s = numpy.std(self.W, axis=0)
+                vector = numpy.random.rand(self.W.shape[1]) * s + m / 2
+            elif vector_init == "normal":
+                m = numpy.mean(self.W, axis=0)
+                s = numpy.std(self.W, axis=0)
+                vector = numpy.random.randn(self.W.shape[1]) * s + m
 
+        vector = numpy.expand_dims(vector, axis=0)
         if index is None:
             self.vocabulary.add(word)
             self.W = numpy.append(self.W, vector, axis=0)
         else:
             self.vocabulary.add(word, index)
-            vector = numpy.expand_dims(vector, axis=0)
             self.W = numpy.concatenate((self.W[:index], vector, self.W[index:]), axis=0)
 
     def normalize(self):
@@ -499,7 +502,7 @@ def cross_validation_split_indices(N, folds, seed=None):
     P = numpy.random.permutation(range(N))
 
     S = numpy.array(numpy.linspace(0, N, folds + 1), dtype="int")
-    I = map(lambda (s, e): P[s:e], zip(S[:-1], S[1:]))
+    I = list(map(lambda x: P[x[0]:x[1]], zip(S[:-1], S[1:])))
     return I
 
 
@@ -802,15 +805,15 @@ class TFIDFStore:
                 s = t + " " * (m - len(t))
                 for d in self.documents:
                     s += "%f (%d) \t" % (self.get_tfidf(d, t), self.tf[d, t])
-                print s
+                print(s)
                 f.write(s)
 
     def save(self, filepath):
         with io.open(filepath, "w", encoding="utf-8") as f:
-            tf_line = ujson.dumps(self.tf)
-            df_line = ujson.dumps(self.df)
-            documents_line = ujson.dumps(self.documents)
-            terms_line = ujson.dumps(self.terms)
+            tf_line = json.dumps(self.tf)
+            df_line = json.dumps(self.df)
+            documents_line = json.dumps(self.documents)
+            terms_line = json.dumps(self.terms)
 
             f.write(tf_line + u"\n")
             f.write(df_line + u"\n")
@@ -824,10 +827,10 @@ class TFIDFStore:
             documents_line = f.readline()
             terms_line = f.readline()
 
-            self.tf = ujson.loads(tf_line)
-            self.df = ujson.loads(df_line)
-            self.documents = ujson.loads(documents_line)
-            self.terms = ujson.loads(terms_line)
+            self.tf = json.loads(tf_line)
+            self.df = json.loads(df_line)
+            self.documents = json.loads(documents_line)
+            self.terms = json.loads(terms_line)
 
 
 def mark_unknown(tokens, token2index):

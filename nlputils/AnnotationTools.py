@@ -1,8 +1,8 @@
-from colorama import Fore
+import functools
 import numpy
-from bisect import bisect_left
-
 import DataTools
+from colorama import Fore
+from bisect import bisect_left
 
 __author__ = 'sjebbara'
 
@@ -75,7 +75,7 @@ class IOBScheme:
         else:
             bio_indices = bio
         # outside should not be colored at all
-        colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
         return colored_text
 
     @staticmethod
@@ -85,7 +85,7 @@ class IOBScheme:
         cm["I"] = Fore.BLUE  # inside
         cm["O"] = ""  # outside
         # outside should not be colored at all
-        colored_text = spacer.join(map(lambda (e, t): cm[t] + e + Fore.RESET, zip(elements, tags)))
+        colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
         return colored_text
 
     @staticmethod
@@ -190,7 +190,7 @@ class IOBXScheme:
         else:
             bio_indices = bio
         # outside should not be colored at all
-        colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
         return colored_text
 
     @staticmethod
@@ -200,7 +200,7 @@ class IOBXScheme:
         cm["I"] = Fore.BLUE  # inside
         cm["O"] = ""  # outside
         # outside should not be colored at all
-        colored_text = spacer.join(map(lambda (e, t): cm[t] + e + Fore.RESET, zip(elements, tags)))
+        colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
         return colored_text
 
     @staticmethod
@@ -276,7 +276,7 @@ class IOB2Scheme:
         else:
             bio_indices = bio
         # outside should not be colored at all
-        colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
         return colored_text
 
     def __str__(self):
@@ -290,8 +290,103 @@ def get_tagging_scheme(name):
     name = name.lower()
     if name == "iob" or name == "bio":
         return IOBScheme
-    if name == "iob2" or name == "bio2":
+    elif name == "iob2" or name == "bio2":
         return IOB2Scheme
+    elif name == "count":
+        return CountScheme
+
+
+class CountScheme:
+    index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
+    size = len(index2tag)
+    name = "count"
+
+    @staticmethod
+    def spans2tags(length, spans):
+        sorted(spans, key=lambda s: s[0])
+        bio_sequence = ["O"] * length
+        for s, e in spans:
+            if bio_sequence[s - 1] == "B" or bio_sequence[s - 1] == "I":
+                # if previous token is annotated (by different annotation)
+                # == if last is I or B start with B
+                bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
+            else:
+                # if last is O start with I
+                bio_sequence[s:e] = ["I"] * (e - s)
+
+        return bio_sequence
+
+    @staticmethod
+    def tags2spans(tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "B":
+                if start is not None:
+                    spans.append((start, i))
+                start = i
+            elif t == "I":
+                if start is None:
+                    start = i
+            elif t == "O":
+                if start is not None:
+                    spans.append((start, i))
+                start = None
+
+        if start:
+            spans.append((start, len(tags)))
+        return spans
+
+    @staticmethod
+    def spans2encoding(length, spans):
+        return IOBScheme.tags2encoding(IOBScheme.spans2tags(length, spans))
+
+    @staticmethod
+    def tags2encoding(tags):
+        return tag_sequence2encoding(tags, IOBScheme.tag2index)
+
+    @staticmethod
+    def encoding2tags(encoding):
+        return encoding2tag_sequence(encoding, IOBScheme.index2tag)
+
+    @staticmethod
+    def encoding2spans(encoding):
+        return IOBScheme.tags2spans(encoding2tag_sequence(encoding, IOBScheme.index2tag))
+
+    @staticmethod
+    def visualize_encoding(elements, bio, onehot=True, spacer=u""):
+        b = Fore.GREEN  # beginning
+        i = Fore.BLUE  # inside
+        o = Fore.BLACK  # outside
+        BI = [b, i, o]
+        if onehot:
+            bio_indices = numpy.argmax(bio, axis=1)
+        else:
+            bio_indices = bio
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
+        return colored_text
+
+    @staticmethod
+    def visualize_tags(elements, tags, spacer=u""):
+        cm = dict()
+        cm["B"] = Fore.GREEN  # beginning
+        cm["I"] = Fore.BLUE  # inside
+        cm["O"] = ""  # outside
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
+        return colored_text
+
+    @staticmethod
+    def visualize_spans(elements, spans, spacer=u""):
+        tags = IOBScheme.spans2tags(len(elements), spans)
+        return IOBScheme.visualize_tags(elements, tags, spacer)
+
+    def __str__(self):
+        return IOBScheme.name
+
+    def __repr__(self):
+        return IOBScheme.name
 
 
 # class IOEScheme:
@@ -431,7 +526,7 @@ def visualize_iob(elements, bio, onehot=True, spacer=u""):
     else:
         bio_indices = bio
     # outside should not be colored at all
-    colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+    colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
     return colored_text
 
 
@@ -487,7 +582,7 @@ def visualize_iob2(elements, bio, onehot=True, spacer=u""):
     else:
         bio_indices = bio
     # outside should not be colored at all
-    colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
+    colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
     return colored_text
 
 
@@ -562,7 +657,7 @@ def tag_sequence2encoding(tag_sequence, tag2index):
 
 
 def annotations_to_spans(annotations):
-    return map(lambda a: (a.start, a.end), annotations)
+    return list(map(lambda a: (a.start, a.end), annotations))
 
 
 def tags2spans(tags, annotation_scheme="IOB"):
@@ -665,7 +760,7 @@ def make_spans_match_tokens(spans, token_spans):
             if overlap(s, t) >= float(size(t)) / 3:
                 matching_tokens.append(t)
         if len(matching_tokens) > 0:
-            matched_spans.append(reduce(lambda n, t: (min(t[0], s[0]), max(t[1], s[1])), matching_tokens, s))
+            matched_spans.append(functools.reduce(lambda n, t: (min(t[0], s[0]), max(t[1], s[1])), matching_tokens, s))
     return matched_spans
 
 

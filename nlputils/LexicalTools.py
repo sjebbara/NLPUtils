@@ -2,7 +2,6 @@ import re
 import os
 import numpy
 import nltk
-
 import DataTools
 
 __author__ = 'sjebbara'
@@ -88,6 +87,9 @@ whitespace_reduce_regex = re.compile(r"\s+")
 whitespace_regex = re.compile(r"\s")
 
 simple_url_regex = re.compile("(https?|ftp):\/\/[^\s/$.?#].[^\s]*")
+
+DEFAULT_CHAR_SET = ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.;:!?-_\"\'\\/()[]{}<>=+*$€£¥%&§@#"]
+
 
 def lower(x):
     return x.lower()

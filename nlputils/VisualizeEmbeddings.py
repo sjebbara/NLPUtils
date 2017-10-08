@@ -2,8 +2,8 @@ import numpy
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
-from nlputils import DataTools
-from nlputils import LearningTools
+import DataTools
+import LearningTools
 
 __author__ = 'sjebbara'
 
@@ -37,12 +37,12 @@ def visualize_embeddings(W, words, word2index, labels=None):
 
     for txt, vec in zip(labels, E):
         try:
-            # print txt
+            # print(txt)
             utxt = txt.decode("utf-8")
         except UnicodeEncodeError as e:
             utxt = txt
-            print txt, ":"
-            print e
+            print(txt, ":")
+            print(e)
         # if txt.endswith("en"):
         ax.text(vec[0], vec[1], utxt, fontsize=14, color="b")
     # else:
@@ -72,8 +72,8 @@ def visualize_bilingual_embeddings(W_l1, W_l2, words_l1, words_l2, word2index_l1
             utxt = txt.decode("utf-8")
         except UnicodeEncodeError as e:
             utxt = txt
-            print txt, ":"
-            print e
+            print(txt, ":")
+            print(e)
         ax.text(vec[0], vec[1], utxt, fontsize=10, color="g")
 
     for i, txt in enumerate(words_l2):
@@ -82,8 +82,8 @@ def visualize_bilingual_embeddings(W_l1, W_l2, words_l1, words_l2, word2index_l1
             utxt = txt.decode("utf-8")
         except UnicodeEncodeError as e:
             utxt = txt
-            print txt, ":"
-            print e
+            print(txt, ":")
+            print(e)
         ax.text(vec[0], vec[1], utxt, fontsize=10, color="b")
 
     plt.show()
@@ -105,7 +105,7 @@ def print_crosslingual_analysis(W_l1, W_l2, words_l1, top_k, word2index_l1, inde
             D = cosine_distance(W_l2, x)
             S = numpy.argsort(D)
             Iknn = S[1:top_k + 1]
-            print Iknn
+            print(Iknn)
             words_knn_l2 = [index2word_l2[i] for i in Iknn]
             for i, word_knn_l2 in enumerate(words_knn_l2):
                 LearningTools.log(f, "%s.) %s\t%s" % (i, D[S[i + 1]], word_knn_l2))
