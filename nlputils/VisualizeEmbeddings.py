@@ -2,8 +2,8 @@ import numpy
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
-import DataTools
-import LearningTools
+from nlputils import DataTools
+from nlputils import LearningTools
 
 __author__ = 'sjebbara'
 

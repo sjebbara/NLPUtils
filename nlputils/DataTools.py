@@ -2,7 +2,9 @@ import io
 import json
 import os
 import numpy
-import LearningTools
+import re
+
+from nlputils import LearningTools
 from sklearn.base import BaseEstimator, TransformerMixin
 from xml.sax.saxutils import unescape
 from collections import defaultdict, Counter
@@ -158,7 +160,7 @@ class Vocabulary:
     def init_from_gensim(self, w2v):
         self.index2word, self.word2index = get_mappings(w2v.index2word)
         self.vocab = set(self.word2index.keys())
-        self.counts = Counter(dict([(w, v.count) for w, v in w2v.vocab.iteritems()]))
+        self.counts = Counter(dict([(w, v.count) for w, v in w2v.vocab.items()]))
 
     def __len__(self):
         return len(self.vocab)
@@ -167,21 +169,21 @@ class Vocabulary:
         return word in self.word2index
 
     def __str__(self):
-        s = u"#Vocab: %d" % (len(self.vocab))
+        s = "#Vocab: %d" % (len(self.vocab))
         if hasattr(self, "padding_word") and self.padding_word:
-            s += u"\n  padding: %d = '%s'" % (
+            s += "\n  padding: %d = '%s'" % (
                 self.word2index[self.padding_word], self.index2word[self.word2index[self.padding_word]])
         if hasattr(self, "unknown_word") and self.unknown_word:
-            s += u"\n  unknown: %d = '%s'\n" % (
+            s += "\n  unknown: %d = '%s'\n" % (
                 self.word2index[self.unknown_word], self.index2word[self.word2index[self.unknown_word]])
 
         if len(self.index2word) <= 10:
-            s += u"[{}]".format(", ".join([u"'{}'".format(w) for w in self.index2word]))
+            s += "[{}]".format(", ".join(["'{}'".format(w) for w in self.index2word]))
         else:
-            s += u"[{}, ... , {}]".format(", ".join([u"'{}'".format(w) for w in self.index2word[:5]]),
-                                          ", ".join([u"'{}'".format(w) for w in self.index2word[-5:]]))
+            s += "[{}, ... , {}]".format(", ".join(["'{}'".format(w) for w in self.index2word[:5]]),
+                                         ", ".join(["'{}'".format(w) for w in self.index2word[-5:]]))
 
-        return s.encode("utf-8")
+        return s
 
     def most_common(self, top_k=None):
         return [w for w, c in self.counts.most_common(top_k)]
@@ -362,7 +364,7 @@ class Embedding:
 
         if top_k:
             counts.update(dict(self.vocabulary.counts.most_common(top_k)))
-            vocab_trim.update(set([w for w, c in counts.iteritems()]))
+            vocab_trim.update(set([w for w, c in counts.items()]))
 
         indices = self.vocabulary.get_indices(vocab_trim)
         self.W = self.W[indices]
@@ -389,16 +391,32 @@ class Embedding:
         self.vocabulary = Vocabulary()
         self.vocabulary.load(vocab_filepath)
 
-    def load_plain_text_file(self, filepath, top_k=None):
+    def load_plain_text_file(self, filepath, top_k=None, has_header=False):
         words = []
+        word_set = set()
         vectors = []
-        with io.open(filepath) as f:
-            for line in f:
-                if len(words) >= top_k:
-                    break
-                parts = line.split(" ")
-                words.append(parts[0])
-                vectors.append(map(float, parts[1:]))
+        d = None
+        with open(filepath) as f:
+            for i, line in enumerate(f):
+                if not has_header or i > 0:
+                    if top_k is not None and len(words) >= top_k:
+                        break
+
+                    parts = line.strip().split(" ")
+                    word = parts[0]
+                    if word in word_set:
+                        print("WARNING: Word repeated in line {}: '{}'".format(i, line))
+                        continue
+                    word_set.add(word)
+                    vector = [float(f) for f in parts[1:]]
+                    if d is None:
+                        d = len(vector)
+
+                    if len(vector) != d:
+                        print("WARNING: Line {} seems to be broken: '{}'".format(i, line))
+                        continue
+                    words.append(word)
+                    vectors.append(vector)
 
         vectors = numpy.array(vectors)
         vocabulary = Vocabulary()

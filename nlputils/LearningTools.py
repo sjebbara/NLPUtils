@@ -11,12 +11,12 @@ import scipy
 import os
 import math
 import time
-import EvaluationTools
 import matplotlib
 import matplotlib.markers
 import matplotlib.pyplot as plt
 import pprint
 import six
+from nlputils import EvaluationTools
 from collections import Counter
 from colorama import Fore
 
@@ -33,11 +33,11 @@ class BetterDict(dict):
         super(BetterDict, self).__init__(*args, **kwargs)
         for arg in args:
             if isinstance(arg, dict):
-                for k, v in arg.iteritems():
+                for k, v in arg.items():
                     self[k] = v
 
         if kwargs:
-            for k, v in kwargs.iteritems():
+            for k, v in kwargs.items():
                 self[k] = v
 
     def __getattr__(self, attr):
@@ -68,11 +68,11 @@ class Configuration(dict):
         super(Configuration, self).__init__(*args, **kwargs)
         for arg in args:
             if isinstance(arg, dict):
-                for k, v in arg.iteritems():
+                for k, v in arg.items():
                     self[k] = v
 
         if kwargs:
-            for k, v in kwargs.iteritems():
+            for k, v in kwargs.items():
                 self[k] = v
 
     def __getattr__(self, attr):
@@ -97,7 +97,7 @@ class Configuration(dict):
 
     def _to_primitive_dict(self):
         d = dict()
-        for k, v in self.iteritems():
+        for k, v in self.items():
             if hasattr(v, "__name__"):
                 d[k] = v.__name__
             else:
@@ -382,14 +382,14 @@ class ScorePlot(object):
             plt.ion()
 
             self.scores[plot_type][n, e] = score
-            for pt, scores in self.scores.iteritems():
+            for pt, scores in self.scores.items():
                 scores = self.scores[pt]
                 color = self.colors[pt]
                 for n_prime in range(self.n_experiments):
                     # only add label to first of its lines to keep legend small
                     self.ax.plot(range(1, self.n_epochs + 1), scores[n_prime, :], color=color,
                                  marker=self.markers[n_prime], label=pt if n_prime == 0 else None)
-            for pt, scores in self.scores.iteritems():
+            for pt, scores in self.scores.items():
                 line = self.lines[pt]
                 color = self.colors[pt]
                 means = numpy.nanmean(scores, axis=0)
@@ -415,7 +415,7 @@ class ScorePlot(object):
 
         for pt in plot_types:
             print("#####", pt, "#####")
-            print(zip(numpy.argmax(self.scores[pt], axis=1), numpy.max(self.scores[pt], axis=1)))
+            print(list(zip(numpy.argmax(self.scores[pt], axis=1), numpy.max(self.scores[pt], axis=1))))
             print(self.scores[pt])
 
 
@@ -1052,7 +1052,8 @@ def get_padding_shape(X):
             if len(padding_shape_x) == 0:
                 padding_shape_x = padding_shape_x_new
             else:
-                padding_shape_x = map(max, itertools.izip_longest(padding_shape_x, padding_shape_x_new, fillvalue=0))
+                padding_shape_x = list(
+                    map(max, itertools.zip_longest(padding_shape_x, padding_shape_x_new, fillvalue=0)))
     return [len(X)] + padding_shape_x
 
 
@@ -1152,7 +1153,7 @@ def _remove_vowls(word):
 def dict2name(d):
     name = ""
     separator = ""
-    items = sorted(d.iteritems())
+    items = sorted(d.items())
     for k, v in items:
         name += separator + "%s=%s" % (_remove_vowls(k), v)
         separator = "_"
@@ -1167,7 +1168,7 @@ def seconds_to_readable_time(seconds):
 
 def write_vocab(vocab, filepath):
     with open(filepath, "w") as f:
-        for v, c in vocab.iteritems():
+        for v, c in vocab.items():
             f.write(v + " " + str(c))
             f.write("\n")
 
@@ -1205,7 +1206,7 @@ def write_iterable(it, filepath, to_str=None, encoding="utf-8"):
 
 def write_index2word_dict(index2word, filepath):
     with io.open(filepath, "w", encoding="utf-8") as f:
-        for idx, word in index2word.iteritems():
+        for idx, word in index2word.items():
             f.write(u"%s %s\n" % (idx, word))
 
 
@@ -1276,7 +1277,7 @@ def load_mapping(filepath):
     with open(filepath) as f:
         l = f.readline()
         index2token = eval(l)
-        token2index = dict([(t, i) for i, t in index2token.iteritems()])
+        token2index = dict([(t, i) for i, t in index2token.items()])
 
     return index2token, token2index
 

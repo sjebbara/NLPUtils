@@ -1,8 +1,8 @@
 import functools
 import numpy
-import DataTools
 from colorama import Fore
 from bisect import bisect_left
+from nlputils import DataTools
 
 __author__ = 'sjebbara'
 

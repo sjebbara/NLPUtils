@@ -1,8 +1,9 @@
 import numpy
-import LearningTools
+from nlputils import LearningTools
 
 
-def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=None, verbose=1, prefix=None):
+def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=None, verbose=1, prefix=None,
+          sample_weight_fn=None):
     train_log = LearningTools.TrainingTimer()
     train_log.init(1, n_instances)
 
@@ -17,10 +18,18 @@ def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=N
         if verbose >= 2:
             print("### Train on new batches")
             LearningTools.print_batch_shapes(batches)
+        if verbose >= 3:
+            print(batches)
 
-        model.train_on_batch(batches, batches)
+        if sample_weight_fn is not None:
+            sample_weight_batch = sample_weight_fn(batches)
+        else:
+            sample_weight_batch = None
+
+        losses = model.train_on_batch(batches, batches, sample_weight=sample_weight_batch)
+        if verbose >= 1:
+            print(losses)
         train_log.process(actual_batch_size)
-
         batch_iterator = BatchIterator([batches])
         for instance in batch_iterator:
             yield instance
@@ -147,7 +156,7 @@ class BatchIterator:
             i = 0
             while try_next:
                 instance = LearningTools.BetterDict()
-                for name, batch in batches.iteritems():
+                for name, batch in batches.items():
                     if i < len(batch):
                         instance[name] = batch[i]
                     else:
@@ -240,6 +249,12 @@ class Vectorizer(object):
         self.previous_vectorizer = previous_vectorizer
         return self
 
+    def prepend(self, initial_vectorizer):
+        if self.previous_vectorizer is None:
+            self.previous_vectorizer = initial_vectorizer
+        else:
+            self.previous_vectorizer.prepend(initial_vectorizer)
+
 
 class VectorizerPipeline(Vectorizer):
     def __init__(self, vectorizers=None, **kwargs):
@@ -256,6 +271,9 @@ class VectorizerPipeline(Vectorizer):
             T = v.transform(T)
         return T
 
+    def prepend(self, initial_vectorizer):
+        raise NotImplementedError()
+
 
 class VectorizerUnion(Vectorizer):
     def __init__(self, previous_vectorizers=None, **kwargs):
@@ -267,7 +285,7 @@ class VectorizerUnion(Vectorizer):
 
     def transform(self, X):
         T = LearningTools.BetterDict()
-        for name, (vectorizer, to_array) in self.previous_vectorizers.iteritems():
+        for name, (vectorizer, to_array) in self.previous_vectorizers.items():
             tmp = vectorizer.transform(X)
             if to_array:
                 tmp = numpy.array(tmp)
@@ -280,6 +298,11 @@ class VectorizerUnion(Vectorizer):
             print("Warning: Override previously assigned vectorizer:", name, self.previous_vectorizers[name].name)
         self.previous_vectorizers[name] = (previous_vectorizer, to_array)
         return self
+
+    def prepend(self, initial_vectorizer):
+        # for previous_vectorizer in self.previous_vectorizers.values():
+        #     previous_vectorizer.prepend(initial_vectorizer)
+        raise NotImplementedError()
 
 
 class ZipVectorizer(Vectorizer):
@@ -301,6 +324,9 @@ class ZipVectorizer(Vectorizer):
         self.previous_vectorizers = previous_vectorizers
         return self
 
+    def prepend(self, initial_vectorizer):
+        raise NotImplementedError()
+
 
 class MergeVectorizer(Vectorizer):
     def __init__(self, previous_vectorizers=None, **kwargs):
@@ -315,7 +341,7 @@ class MergeVectorizer(Vectorizer):
         T = LearningTools.BetterDict()
         for vu in self.previous_vectorizers:
             tmp = vu.transform(X)
-            for name, T_tmp in tmp.iteritems():
+            for name, T_tmp in tmp.items():
                 T[name] = T_tmp
         return T
 
@@ -324,6 +350,9 @@ class MergeVectorizer(Vectorizer):
             print("Warning: Override previously assigned vectorizer:", previous_vectorizers)
         self.previous_vectorizers = previous_vectorizers
         return self
+
+    def prepend(self, initial_vectorizer):
+        raise NotImplementedError()
 
 
 class LambdaVectorizer(Vectorizer):

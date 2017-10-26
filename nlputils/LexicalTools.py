@@ -2,7 +2,7 @@ import re
 import os
 import numpy
 import nltk
-import DataTools
+from nlputils import DataTools
 
 __author__ = 'sjebbara'
 # Visualize tokenization pattern for sentence:
@@ -22,73 +22,45 @@ tokenization_patterns["advanced2"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+|[^\w\
 tokenization_patterns["advanced2-no-punc"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+|[^\w\s]", re.UNICODE)
 tokenization_patterns["advanced3"] = re.compile("\d+[./]\d+|\w+[-']\w+|\w+", re.UNICODE)
 
-tagger = nltk.tag.StanfordPOSTagger(
-    os.path.expanduser('~/programs/stanford-postagger-2016-10-31/models/english-left3words-distsim.tagger'),
-    path_to_jar=os.path.expanduser("~/programs/stanford-postagger-2016-10-31/stanford-postagger.jar"))
-
 # stanford_sentence_splitter = nltk.tokenize.stanford.StanfordTokenizer(
 #     os.path.expanduser("~/programs/stanford-corenlp-full-2015-12-09/stanford-corenlp-3.6.0.jar"))
 # sentence_splitter = nltk.tokenize.PunktSentenceTokenizer()
 sentence_boundary_regex = re.compile(r"(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?|!)(\s+|\b)(?!\d)")
 
-index2pos = []
-index2pos.append("<PAD>")
-index2pos.append("<UNK>")
-index2pos.append("CC")
-index2pos.append("CD")
-index2pos.append("DT")
-index2pos.append("EX")
-index2pos.append("FW")
-index2pos.append("IN")
-index2pos.append("JJ")
-index2pos.append("JJR")
-index2pos.append("JJS")
-index2pos.append("LS")
-index2pos.append("MD")
-index2pos.append("NN")
-index2pos.append("NNS")
-index2pos.append("NNP")
-index2pos.append("NNPS")
-index2pos.append("PDT")
-index2pos.append("POS")
-index2pos.append("PRP")
-index2pos.append("PRP$")
-index2pos.append("RB")
-index2pos.append("RBR")
-index2pos.append("RBS")
-index2pos.append("RP")
-index2pos.append("SYM")
-index2pos.append("TO")
-index2pos.append("UH")
-index2pos.append("VB")
-index2pos.append("VBD")
-index2pos.append("VBG")
-index2pos.append("VBN")
-index2pos.append("VBP")
-index2pos.append("VBZ")
-index2pos.append("WDT")
-index2pos.append("WP")
-index2pos.append("WP$")
-index2pos.append("WRB")
-index2pos.append("#")
-index2pos.append("$")
-index2pos.append("''")
-index2pos.append("``")
-index2pos.append(",")
-index2pos.append(".")
-index2pos.append(":")
+POS_TAG_SET = (
+    "<PAD>", "<UNK>", "CC", "CD", "DT", "EX", "FW", "IN", "JJ", "JJR", "JJS", "LS", "MD", "NN", "NNS", "NNP", "NNPS",
+    "PDT", "POS", "PRP", "PRP$", "RB", "RBR", "RBS", "RP", "SYM", "TO", "UH", "VB", "VBD", "VBG", "VBN", "VBP", "VBZ",
+    "WDT", "WP", "WP$", "WRB", "#", "$", "''", "``", ",", ".", ":")
 
 pos_vocabulary = DataTools.Vocabulary()
-pos_vocabulary.init_from_word_list(index2pos)
+pos_vocabulary.init_from_word_list(POS_TAG_SET)
 pos_vocabulary.set_padding(0)
 pos_vocabulary.set_unknown(1)
+
+
+def get_pos_tag_vocabulary():
+    pos_vocabulary = DataTools.Vocabulary()
+    pos_vocabulary.init_from_word_list(POS_TAG_SET)
+    pos_vocabulary.set_padding(0)
+    pos_vocabulary.set_unknown(1)
+    return pos_vocabulary
+
 
 whitespace_reduce_regex = re.compile(r"\s+")
 whitespace_regex = re.compile(r"\s")
 
 simple_url_regex = re.compile("(https?|ftp):\/\/[^\s/$.?#].[^\s]*")
 
-DEFAULT_CHAR_SET = ["abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.;:!?-_\"\'\\/()[]{}<>=+*$€£¥%&§@#"]
+DEFAULT_CHAR_SET = list(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,.;:!?-_\"\'\\/()[]{}<>=+*$€£¥%&§@#")
+
+
+def get_char_vocabulary():
+    char_vocabulary = DataTools.Vocabulary()
+    char_vocabulary.init_from_word_list(DEFAULT_CHAR_SET)
+    char_vocabulary.add_padding("<0>", 0)
+    char_vocabulary.add_unknown("<?>", 1)
+    return char_vocabulary
 
 
 def lower(x):
@@ -181,7 +153,14 @@ def is_punctuation(token):
     return is_punctuation_regex.match(token) is not None
 
 
+def _get_pos_tagger():
+    return nltk.tag.StanfordPOSTagger(
+        "/home/sjebbara/programs/stanford-postagger-2017-06-09/models/english-left3words-distsim.tagger",
+        path_to_jar="/home/sjebbara/programs/stanford-postagger-2017-06-09/stanford-postagger.jar")
+
+
 def get_pos_tags(sentences, as_index=True):
+    tagger = _get_pos_tagger()
     tagged_sentences = tagger.tag_sents(sentences)
 
     if as_index:
@@ -223,5 +202,25 @@ def filter_stopwords(stopwords, starts, ends, tokens):
     return starts_filtered, ends_filtered, tokens_filtered
 
 
-def get_n_grams(tokens, n):
+def get_n_grams(tokens, n, pad_start=None, pad_end=None):
+    start_padding = [pad_start] * (n - 1) * (pad_start is not None)
+    end_padding = [pad_end] * (n - 1) * (pad_end is not None)
+    tokens = start_padding + tokens + end_padding
     return zip(*[tokens[i:] for i in range(n)])
+
+
+negation_words = set("no cannot not none nothing nowhere neither nor never nobody hardly scarcely barely".split())
+
+
+def is_negation(token):
+    if token in negation_words:
+        return True
+    elif token.endswith("'nt"):
+        return True
+    else:
+        return False
+
+
+def get_character_word_ngrams(tokens, n, pad_start=None, pad_end=None):
+    char_ngrams = [get_n_grams(list(t), n, pad_start, pad_end) for t in tokens]
+    return char_ngrams
