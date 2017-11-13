@@ -8,6 +8,15 @@ def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=N
     train_log.init(1, n_instances)
 
     batch_generator = BatchGenerator(instances, batch_size, vectorizer=vectorizer, raw_data_name=raw_data_name)
+    return train_on_batch_generator(model, batch_generator, n_instances, raw_data_name, verbose, prefix,
+                                    sample_weight_fn)
+
+
+def train_on_batch_generator(model, batch_generator, n_instances, raw_data_name=None, verbose=1, prefix=None,
+                             sample_weight_fn=None):
+    train_log = LearningTools.TrainingTimer()
+    train_log.init(1, n_instances)
+
     for i, batches in enumerate(batch_generator):
         actual_batch_size = len(batches[raw_data_name])
         if verbose >= 1:
@@ -22,13 +31,13 @@ def train(model, instances, vectorizer, batch_size, n_instances, raw_data_name=N
             print(batches)
 
         if sample_weight_fn is not None:
-            sample_weight_batch = sample_weight_fn(batches)
+            sample_weight_batches = sample_weight_fn(batches)
         else:
-            sample_weight_batch = None
+            sample_weight_batches = None
 
-        losses = model.train_on_batch(batches, batches, sample_weight=sample_weight_batch)
+        losses = model.train_on_batch(batches, batches, sample_weight=sample_weight_batches)
         if verbose >= 1:
-            print(losses)
+            print("Loss: ", losses)
         train_log.process(actual_batch_size)
         batch_iterator = BatchIterator([batches])
         for instance in batch_iterator:

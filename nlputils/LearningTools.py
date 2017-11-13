@@ -1316,3 +1316,19 @@ def plot_k_word_attention_function(ax, data):
 
     ax.set_xticklabels(words, rotation=30)
     pylab.legend(loc="upper left")
+
+
+def align_string_lists(lists, padding_character=" ", alignment_position="start"):
+    aligned_lists = []
+
+    for elements in zip(*lists):
+        lengths = [len(e) for e in elements]
+        max_len = max(lengths)
+        if alignment_position == "start":
+            elements = [e.ljust(max_len, padding_character) for e in elements]
+        elif alignment_position == "end":
+            elements = [e.rjust(max_len, padding_character) for e in elements]
+        aligned_lists.append(elements)
+
+    aligned_lists = zip(*aligned_lists)
+    return aligned_lists

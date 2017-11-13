@@ -100,6 +100,87 @@ class IOBScheme:
         return IOBScheme.name
 
 
+class BinaryScheme:
+    index2tag, tag2index = DataTools.get_mappings(["I", "O"])
+    size = len(index2tag)
+    name = "Binary"
+
+    @staticmethod
+    def spans2tags(length, spans):
+        sorted(spans, key=lambda s: s[0])
+        bio_sequence = ["O"] * length
+        for s, e in spans:
+            bio_sequence[s:e] = ["I"] * (e - s)
+
+        return bio_sequence
+
+    @staticmethod
+    def tags2spans(tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "I":
+                if start is None:
+                    start = i
+            elif t == "O":
+                if start is not None:
+                    spans.append((start, i))
+                start = None
+
+        if start:
+            spans.append((start, len(tags)))
+        return spans
+
+    @staticmethod
+    def spans2encoding(length, spans):
+        return BinaryScheme.tags2encoding(BinaryScheme.spans2tags(length, spans))
+
+    @staticmethod
+    def tags2encoding(tags):
+        return tag_sequence2encoding(tags, BinaryScheme.tag2index)
+
+    @staticmethod
+    def encoding2tags(encoding):
+        return encoding2tag_sequence(encoding, BinaryScheme.index2tag)
+
+    @staticmethod
+    def encoding2spans(encoding):
+        return BinaryScheme.tags2spans(encoding2tag_sequence(encoding, BinaryScheme.index2tag))
+
+    @staticmethod
+    def visualize_encoding(elements, bio, onehot=True, spacer=u""):
+        i = Fore.BLUE  # inside
+        o = Fore.BLACK  # outside
+        BI = [i, o]
+        if onehot:
+            bio_indices = numpy.argmax(bio, axis=1)
+        else:
+            bio_indices = bio
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
+        return colored_text
+
+    @staticmethod
+    def visualize_tags(elements, tags, spacer=u""):
+        cm = dict()
+        cm["I"] = Fore.BLUE  # inside
+        cm["O"] = ""  # outside
+        # outside should not be colored at all
+        colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
+        return colored_text
+
+    @staticmethod
+    def visualize_spans(elements, spans, spacer=u""):
+        tags = BinaryScheme.spans2tags(len(elements), spans)
+        return BinaryScheme.visualize_tags(elements, tags, spacer)
+
+    def __str__(self):
+        return BinaryScheme.name
+
+    def __repr__(self):
+        return BinaryScheme.name
+
+
 class IOBXScheme:
     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
     size = len(index2tag)

@@ -37,6 +37,10 @@ pos_vocabulary.init_from_word_list(POS_TAG_SET)
 pos_vocabulary.set_padding(0)
 pos_vocabulary.set_unknown(1)
 
+CHUNK_TAG_SET = (
+    "B-PRT", "I-PRT", "B-LST", "I-LST", "B-ADVP", "I-ADVP", "B-VP", "I-VP", "B-CONJP", "I-CONJP", "B-NP", "I-NP",
+    "B-ADJP", "I-ADJP", "B-PP", "I-PP", "B-INTJ", "I-INTJ", "B-SBAR", "I-SBAR", "B-UCP", "I-UCP", "O")
+
 
 def get_pos_tag_vocabulary():
     pos_vocabulary = DataTools.Vocabulary()
@@ -44,6 +48,13 @@ def get_pos_tag_vocabulary():
     pos_vocabulary.set_padding(0)
     pos_vocabulary.set_unknown(1)
     return pos_vocabulary
+
+
+def get_chunk_tag_vocabulary():
+    chunk_vocabulary = DataTools.Vocabulary()
+    chunk_vocabulary.init_from_word_list(CHUNK_TAG_SET)
+    chunk_vocabulary.add_padding("<pad>", 0)
+    return chunk_vocabulary
 
 
 whitespace_reduce_regex = re.compile(r"\s+")

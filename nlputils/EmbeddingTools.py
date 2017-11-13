@@ -1,7 +1,10 @@
 import numpy
 import os
 from gensim.models.word2vec import Word2Vec
+from nlputils import LexicalTools
+
 from nlputils import LearningTools
+from nlputils import DataTools
 
 
 def export_w2v(output_dirname, name, w2v=None, input_filename=None):
@@ -80,3 +83,86 @@ def get_nearest_neighbors(W, x, top_k, index2word):
     Iknn = S[1:top_k + 1]
     words_knn = [index2word[i] for i in Iknn]
     return zip(words_knn, W[Iknn, :])
+
+
+def compose_ngram_word_embedding(ngrams, char_ngram_embeddings, n_slots=3, sigma=0.2, normalize=False,
+                                 drop_unknown=True):
+    def _kernel(i, j, sigma=1.0):
+        return numpy.exp(-(i - j) ** 2 / (2 * sigma ** 2))
+
+    ngram_vector_size = char_ngram_embeddings.W.shape[1]
+
+    n_ngrams = len(ngrams)
+    vector_parts = [numpy.zeros(ngram_vector_size) for _ in range(n_slots)]
+    for i_ngram in range(n_ngrams):
+        ngram = ngrams[i_ngram]
+        if ngram in char_ngram_embeddings:
+            ngram_vector = char_ngram_embeddings.get_vector(ngram)
+
+            for i_slot in range(n_slots):
+                r_slot = float(i_slot) / (n_slots - 1)
+                r_ngram = float(i_ngram) / (n_ngrams - 1)
+
+                w = _kernel(r_slot, r_ngram, sigma)
+                vector_parts[i_slot] += w * ngram_vector
+        elif drop_unknown:
+            # do nothing if unknown (same as add "zeros")
+            pass
+        else:
+            raise ValueError("unknown ngram: " + ngram)
+    vector = numpy.concatenate(vector_parts)
+    if normalize:
+        vector /= numpy.linalg.norm(vector)
+
+    return vector
+
+
+def compose_ngram_word_embeddings(words, ngram_size, char_ngram_embeddings, n_slots=3, sigma=0.2, normalize=False,
+                                  pad_start=None, pad_end=None, drop_unknown=True):
+    words = list(words)
+
+    W = []
+    for word in words:
+        char_ngrams = LexicalTools.get_n_grams(list(word), ngram_size, pad_start=pad_start, pad_end=pad_end)
+        char_ngrams = ["".join(ngram) for ngram in char_ngrams]
+
+        vector = compose_ngram_word_embedding(char_ngrams, char_ngram_embeddings, n_slots=n_slots, sigma=sigma,
+                                              normalize=normalize)
+        W.append(vector)
+
+    W = numpy.array(W)
+    word_vocabulary = DataTools.Vocabulary()
+    word_vocabulary.init_from_word_list(words)
+
+    char_ngram_word_embeddings = DataTools.Embedding()
+    char_ngram_word_embeddings.init(word_vocabulary, W)
+    return char_ngram_word_embeddings
+
+
+def concatenate_embeddings(embeddings_list, drop_unknown=False):
+    words = None
+    for embeddings in embeddings_list:
+        if words is None:
+            words = set(embeddings.vocabulary.index2word)
+        else:
+            if drop_unknown:
+                words = words & set(embeddings.vocabulary.index2word)
+            else:
+                words = words | set(embeddings.vocabulary.index2word)
+    W = []
+    index2word = list(words)
+
+    for i, word in enumerate(index2word):
+        vectors = []
+        for embeddings in embeddings_list:
+            vectors.append(embeddings.get_vector(word))
+
+        vector = numpy.concatenate(vectors)
+        W.append(vector)
+    W = numpy.array(W)
+
+    new_vocabulary = DataTools.Vocabulary()
+    new_vocabulary.init_from_word_list(index2word)
+    new_embeddings = DataTools.Embedding()
+    new_embeddings.init(new_vocabulary, W)
+    return new_embeddings

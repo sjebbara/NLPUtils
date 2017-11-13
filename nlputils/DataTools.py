@@ -386,6 +386,14 @@ class Embedding:
         numpy.save(embedding_filepath, self.W)
         self.vocabulary.save(vocab_filepath)
 
+    def save_plain_text_file(self, filepath):
+        with open(filepath, "w") as f:
+            for i, word in enumerate(self.vocabulary.index2word):
+                vector = self.W[i]
+                vector_str = " ".join([str(v) for v in vector])
+
+                f.write(word + " " + vector_str + "\n")
+
     def load(self, embedding_filepath, vocab_filepath):
         self.W = numpy.load(embedding_filepath)
         self.vocabulary = Vocabulary()

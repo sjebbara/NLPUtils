@@ -36,15 +36,15 @@ def visualize_embeddings(W, words, word2index, labels=None):
         labels = words
 
     for txt, vec in zip(labels, E):
-        try:
-            # print(txt)
-            utxt = txt.decode("utf-8")
-        except UnicodeEncodeError as e:
-            utxt = txt
-            print(txt, ":")
-            print(e)
+        # try:
+        #     # print(txt)
+        #     utxt = txt.decode("utf-8")
+        # except UnicodeEncodeError as e:
+        #     utxt = txt
+        #     print(txt, ":")
+        #     print(e)
         # if txt.endswith("en"):
-        ax.text(vec[0], vec[1], utxt, fontsize=14, color="b")
+        ax.text(vec[0], vec[1], txt, fontsize=14, color="b")
     # else:
     #     ax.text(vec[0], vec[1], utxt, fontsize=10, color="g")
 
