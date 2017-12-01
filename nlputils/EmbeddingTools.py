@@ -87,8 +87,8 @@ def get_nearest_neighbors(W, x, top_k, index2word):
 
 def compose_ngram_word_embedding(ngrams, char_ngram_embeddings, n_slots=3, sigma=0.2, normalize=False,
                                  drop_unknown=True):
-    def _kernel(i, j, sigma=1.0):
-        return numpy.exp(-(i - j) ** 2 / (2 * sigma ** 2))
+    def _kernel(x, y, sigma=1.0):
+        return numpy.exp(-(x - y) ** 2 / (2 * sigma ** 2))
 
     ngram_vector_size = char_ngram_embeddings.W.shape[1]
 

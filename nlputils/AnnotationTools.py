@@ -339,12 +339,24 @@ class IOB2Scheme:
         return tag_sequence2encoding(tags, IOB2Scheme.tag2index)
 
     @staticmethod
-    def encoding2tags(encoding):
-        return encoding2tag_sequence(encoding, IOB2Scheme.index2tag)
+    def safe_encoding2tag_sequence(encoding):
+        encoding = numpy.array(encoding)
+        inside_scores = encoding[:, IOB2Scheme.tag2index["B"]] + encoding[:, IOB2Scheme.tag2index["I"]]
+        outside_scores = encoding[:, IOB2Scheme.tag2index["O"]]
+        binary_tags = list(inside_scores > outside_scores)
+        tags = ["I" if b else "O" for b in binary_tags]
+        return tags
 
     @staticmethod
-    def encoding2spans(encoding):
-        return IOB2Scheme.tags2spans(encoding2tag_sequence(encoding, IOB2Scheme.index2tag))
+    def encoding2tags(encoding, safe=False):
+        if safe:
+            return IOB2Scheme.safe_encoding2tag_sequence(encoding)
+        else:
+            return encoding2tag_sequence(encoding, IOB2Scheme.index2tag)
+
+    @staticmethod
+    def encoding2spans(encoding, safe=False):
+        return IOB2Scheme.tags2spans(IOB2Scheme.encoding2tags(encoding, safe=safe))
 
     @staticmethod
     def visualize_encoding(elements, bio, onehot=True, spacer=u""):
@@ -368,12 +380,15 @@ class IOB2Scheme:
 
 
 def get_tagging_scheme(name):
-    name = name.lower()
-    if name == "iob" or name == "bio":
+    lname = name.lower()
+
+    if name == IOBScheme.__name__ or lname == "iob" or lname == "bio":
         return IOBScheme
-    elif name == "iob2" or name == "bio2":
+    elif name == IOB2Scheme.__name__ or lname == "iob2" or lname == "bio2":
         return IOB2Scheme
-    elif name == "count":
+    elif name == BinaryScheme.__name__ or lname == "binary":
+        return BinaryScheme
+    elif name == CountScheme.__name__ or lname == "count":
         return CountScheme
 
 

@@ -16,6 +16,9 @@ import matplotlib.markers
 import matplotlib.pyplot as plt
 import pprint
 import six
+from numpy.random.mtrand import RandomState
+from sklearn.model_selection import ParameterSampler
+
 from nlputils import EvaluationTools
 from collections import Counter
 from colorama import Fore
@@ -1332,3 +1335,18 @@ def align_string_lists(lists, padding_character=" ", alignment_position="start")
 
     aligned_lists = zip(*aligned_lists)
     return aligned_lists
+
+
+def get_sampled_configuration(base_conf, param_distribution, n_iter, seed):
+    random_state = RandomState(seed)
+    sampler = ParameterSampler(param_distribution, n_iter, random_state)
+    sampled_params_list = [params for params in sampler]
+
+    confs = []
+    for params in sampled_params_list:
+        conf = Configuration(base_conf)
+        for k, v in params.items():
+            conf[k] = v
+        confs.append(conf)
+
+    return confs

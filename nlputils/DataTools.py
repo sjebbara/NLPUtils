@@ -2,7 +2,6 @@ import io
 import json
 import os
 import numpy
-import re
 
 from nlputils import LearningTools
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -198,7 +197,7 @@ class Vocabulary:
             if hasattr(self, "unknown_index") and self.unknown_index is not None:
                 return self.unknown_index
             else:
-                raise ValueError("Unknown word received and no value specified for that.")
+                raise ValueError("Unknown word '{}' received and no value specified for that.".format(word))
 
     def get_indices(self, words, drop_unknown=False):
         if drop_unknown or not hasattr(self, "unknown_index"):
@@ -390,7 +389,7 @@ class Embedding:
         with open(filepath, "w") as f:
             for i, word in enumerate(self.vocabulary.index2word):
                 vector = self.W[i]
-                vector_str = " ".join([str(v) for v in vector])
+                vector_str = " ".join(["{:.8f}".format(v) for v in vector])
 
                 f.write(word + " " + vector_str + "\n")
 
