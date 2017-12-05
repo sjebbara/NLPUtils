@@ -98,8 +98,6 @@ def tokenization(text, tokenization_style="standard", stopwords=None):
         if tokenization_style in tokenization_patterns:
             tokenization_pattern = tokenization_patterns[tokenization_style]
         else:
-            print("WARNING: Provided tokenization style '{}' is a string but unknown keyword. treat as REGEX.".format(
-                tokenization_style))
             tokenization_pattern = re.compile(tokenization_style, re.UNICODE)
     else:
         tokenization_pattern = tokenization_style
