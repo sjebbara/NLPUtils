@@ -87,32 +87,47 @@ def get_nearest_neighbors(W, x, top_k, index2word):
 
 def compose_ngram_word_embedding(ngrams, char_ngram_embeddings, n_slots=3, sigma=0.2, normalize=False,
                                  drop_unknown=True):
-    def _kernel(x, y, sigma=1.0):
+    def _kernel(x, y):
         return numpy.exp(-(x - y) ** 2 / (2 * sigma ** 2))
+
+    def _weights(n_ngrams, n_slots):
+        weights = numpy.zeros((n_ngrams, n_slots))
+        for i_slot in range(n_slots):
+            for i_ngram in range(n_ngrams):
+                r_slot = float(i_slot) / (n_slots - 1)
+                r_ngram = float(i_ngram) / (n_ngrams - 1)
+
+                weights[i_ngram, i_slot] = _kernel(r_slot, r_ngram)
+
+        return weights
 
     ngram_vector_size = char_ngram_embeddings.W.shape[1]
 
     n_ngrams = len(ngrams)
-    vector_parts = [numpy.zeros(ngram_vector_size) for _ in range(n_slots)]
-    for i_ngram in range(n_ngrams):
-        ngram = ngrams[i_ngram]
-        if ngram in char_ngram_embeddings:
-            ngram_vector = char_ngram_embeddings.get_vector(ngram)
+    W = _weights(n_ngrams, n_slots)
 
-            for i_slot in range(n_slots):
-                r_slot = float(i_slot) / (n_slots - 1)
-                r_ngram = float(i_ngram) / (n_ngrams - 1)
-
-                w = _kernel(r_slot, r_ngram, sigma)
-                vector_parts[i_slot] += w * ngram_vector
-        elif drop_unknown:
-            # do nothing if unknown (same as add "zeros")
-            pass
-        else:
-            raise ValueError("unknown ngram: " + ngram)
-    vector = numpy.concatenate(vector_parts)
     if normalize:
-        vector /= numpy.linalg.norm(vector)
+        W = W / numpy.sum(W, axis=0, keepdims=True)
+
+    vector_parts = []
+    for i_slot in range(n_slots):
+        v_slot = numpy.zeros(ngram_vector_size)
+        for i_ngram in range(n_ngrams):
+            ngram = ngrams[i_ngram]
+            if ngram in char_ngram_embeddings:
+                ngram_vector = char_ngram_embeddings.get_vector(ngram)
+
+                v_slot += W[i_ngram, i_slot] * ngram_vector
+            elif drop_unknown:
+                # do nothing if unknown (same as add "zeros")
+                pass
+            else:
+                raise ValueError("unknown ngram: " + ngram)
+
+        vector_parts.append(v_slot)
+    vector = numpy.concatenate(vector_parts)
+    # if normalize:
+    #     vector /= numpy.linalg.norm(vector)
 
     return vector
 
@@ -127,7 +142,7 @@ def compose_ngram_word_embeddings(words, ngram_size, char_ngram_embeddings, n_sl
         char_ngrams = ["".join(ngram) for ngram in char_ngrams]
 
         vector = compose_ngram_word_embedding(char_ngrams, char_ngram_embeddings, n_slots=n_slots, sigma=sigma,
-                                              normalize=normalize)
+                                              normalize=normalize, drop_unknown=drop_unknown)
         W.append(vector)
 
     W = numpy.array(W)
