@@ -91,13 +91,16 @@ def compose_ngram_word_embedding(ngrams, char_ngram_embeddings, n_slots=3, sigma
         return numpy.exp(-(x - y) ** 2 / (2 * sigma ** 2))
 
     def _weights(n_ngrams, n_slots):
-        weights = numpy.zeros((n_ngrams, n_slots))
-        for i_slot in range(n_slots):
-            for i_ngram in range(n_ngrams):
-                r_slot = float(i_slot) / (n_slots - 1)
-                r_ngram = float(i_ngram) / (n_ngrams - 1)
+        if n_slots == 1:
+            weights = numpy.ones((n_ngrams, n_slots))
+        else:
+            weights = numpy.zeros((n_ngrams, n_slots))
+            for i_slot in range(n_slots):
+                for i_ngram in range(n_ngrams):
+                    r_slot = float(i_slot) / (n_slots - 1)
+                    r_ngram = float(i_ngram) / (n_ngrams - 1)
 
-                weights[i_ngram, i_slot] = _kernel(r_slot, r_ngram)
+                    weights[i_ngram, i_slot] = _kernel(r_slot, r_ngram)
 
         return weights
 
@@ -105,7 +108,6 @@ def compose_ngram_word_embedding(ngrams, char_ngram_embeddings, n_slots=3, sigma
 
     n_ngrams = len(ngrams)
     W = _weights(n_ngrams, n_slots)
-
     if normalize:
         W = W / numpy.sum(W, axis=0, keepdims=True)
 
