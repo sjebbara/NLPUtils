@@ -639,4 +639,6 @@ def pad_to_shape(X, to_shape, padding_position, value):
 
 def pad(X, padding_position, value):
     shape = LearningTools.get_padding_shape(X)
-    return pad_to_shape(X, shape, padding_position, value)
+    value_shape = LearningTools.get_padding_shape(value)
+    padding_shape = shape[:-len(value_shape)]
+    return pad_to_shape(X, padding_shape, padding_position, value)

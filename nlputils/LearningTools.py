@@ -1,27 +1,30 @@
+import datetime
+import functools
 import gzip
 import io
-import functools
-import pylab
-import re
 import itertools
-import datetime
-import ujson
-import numpy
-import scipy
-import os
 import math
+import os
+import pprint
+import re
 import time
+import ujson
+from collections import Counter
+
 import matplotlib
 import matplotlib.markers
 import matplotlib.pyplot as plt
-import pprint
+import numpy
+import pylab
+import scipy
 import six
+from colorama import Fore
+from keras import Model
 from numpy.random.mtrand import RandomState
+from six import string_types
 from sklearn.model_selection import ParameterSampler
 
 from nlputils import EvaluationTools
-from collections import Counter
-from colorama import Fore
 
 __author__ = 'sjebbara'
 
@@ -119,7 +122,7 @@ class Configuration(dict):
     @classmethod
     def load(cls, filepath):
         with open(filepath) as f:
-            conf_str = f.readline().strip()
+            conf_str = f.read().strip()
 
         d = ujson.loads(conf_str)
         conf = Configuration(d)
@@ -1009,8 +1012,13 @@ def pad_to_shape_no_mask(X, to_shape, padding_position, value):
 
     X_padded = numpy.array(X_padded)
 
-    padding_value = numpy.array(value)
-    pad_shape = [to_shape[0] - len(X)] + to_shape[1:] + [1] * padding_value.ndim
+    if isinstance(value, string_types):
+        padding_value = [value]
+        pad_shape = [to_shape[0] - len(X)] + to_shape[1:]
+    else:
+        padding_value = numpy.array(value)
+        pad_shape = [to_shape[0] - len(X)] + to_shape[1:] + [1] * padding_value.ndim
+
     X_pad = numpy.ones(pad_shape) * padding_value
     if padding_position == "pre":
         X_padded = numpy.concatenate((X_pad, X_padded), axis=0)
@@ -1025,6 +1033,7 @@ def pad(X, padding_position, value, mask=False):
     shape = get_padding_shape(X)
     # print "RAW PAD SHAPE:", shape
     value_shape = get_padding_shape(value)
+
     n_dim_value = len(value_shape)
     if n_dim_value > 0:
         shape = shape[:-n_dim_value]
@@ -1038,6 +1047,9 @@ def pad(X, padding_position, value, mask=False):
 
 
 def get_padding_shape(X):
+    if isinstance(X, string_types):
+        return []
+
     try:
         iter(X)
     except TypeError as e:
@@ -1350,3 +1362,8 @@ def get_sampled_configuration(base_conf, param_distribution, n_iter, seed):
         confs.append(conf)
 
     return confs
+
+
+def get_named_keras_model_outputs(model, outputs):
+    assert isinstance(model, Model)
+    return dict(zip(model.output_names, outputs))

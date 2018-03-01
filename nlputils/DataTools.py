@@ -281,12 +281,15 @@ class Vocabulary:
         def to_object(line):
             parts = line.split(" ")
             word = parts[0]
-            count = int(parts[1])
+
+            if len(parts) > 1:
+                count = int(parts[1])
+            else:
+                count = 1
             return word, count
 
         word_count_list = LearningTools.load_as_list(filepath, to_object=to_object)
         self.index2word = [w for w, c in word_count_list]
-        # todo does this work?
         self.counts = Counter(dict(word_count_list))
 
         self.index2word, self.word2index = get_mappings(self.index2word)

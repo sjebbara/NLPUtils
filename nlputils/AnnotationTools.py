@@ -1,5 +1,6 @@
 import functools
 import numpy
+import sys
 from colorama import Fore
 from bisect import bisect_left
 from nlputils import DataTools
@@ -7,7 +8,382 @@ from nlputils import DataTools
 __author__ = 'sjebbara'
 
 
-class IOBScheme:
+class AbstractTaggingScheme(object):
+    colors = {"O": Fore.BLACK, "B": Fore.GREEN, "I": Fore.CYAN, "E": Fore.BLUE, "S": Fore.MAGENTA}
+    index2tag, tag2index = DataTools.get_mappings(["O", "B", "I", "E", "S"])
+
+    # size = len(index2tag)
+
+    @classmethod
+    def size(cls):
+        return len(cls.index2tag)
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        raise NotImplementedError()
+
+    @classmethod
+    def tags2spans(cls, tags):
+        raise NotImplementedError()
+
+    @classmethod
+    def encoding2tags(cls, encoding):
+        return encoding2tag_sequence(encoding, cls.index2tag)
+
+    @classmethod
+    def spans2encoding(cls, length, spans):
+        return cls.tags2encoding(cls.spans2tags(length, spans))
+
+    @classmethod
+    def encoding2spans(cls, encoding):
+        return cls.tags2spans(cls.encoding2tags(encoding))
+
+    @classmethod
+    def tags2encoding(cls, tag_sequence):
+        encoding = numpy.zeros((len(tag_sequence), cls.size()))
+        for i, tag in enumerate(tag_sequence):
+            encoding[i, cls.tag2index[tag]] = 1
+        return encoding
+
+    @classmethod
+    def visualize_encoding(cls, elements, bio, spacer=u""):
+        colored_text = cls.visualize_tags(elements, cls.encoding2tags(bio), spacer)
+        return colored_text
+
+    @classmethod
+    def visualize_tags(cls, elements, tags, spacer=u""):
+        # outside should not be colored at all
+        colored_text = spacer.join(
+            [cls.colors[tag] + element + Fore.RESET if tag != "O" else element for element, tag in zip(elements, tags)])
+        return colored_text
+
+
+class SafeDecodingScheme(AbstractTaggingScheme):
+    @classmethod
+    def encoding2tags(cls, encoding):
+        encoding = numpy.array(encoding)
+        tags = []
+
+        outside_index = cls.tag2index["O"]
+
+        for vec in encoding:
+            outside = vec[outside_index]
+
+            if outside > 0.5:
+                tags.append("O")
+            else:
+                tmp_vec = numpy.array(vec)
+                tmp_vec[outside_index] = 0
+
+                max_i = numpy.argmax(tmp_vec)
+                max_tag = cls.index2tag[max_i]
+                tags.append(max_tag)
+        return tags
+
+        # @classmethod
+        # def encoding2tags(cls, encoding):
+        #     encoding = numpy.array(encoding)
+        #
+        #     outside_index = cls.tag2index["O"]
+        #     outside_scores = encoding[:, outside_index]
+        #
+        #     inside_scores = numpy.array(encoding)
+        #     inside_scores[:, outside_index] = 0
+        #     inside_scores = numpy.sum(inside_scores, axis=1)
+        #
+        #     binary_tags = list(inside_scores > outside_scores)
+        #
+        #     tags = ["I" if b else "O" for b in binary_tags]
+        #     return tags
+
+
+class IOE2Scheme(AbstractTaggingScheme):
+    index2tag, tag2index = DataTools.get_mappings(["O", "I", "E"])
+
+    # size = len(index2tag)
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        sorted(spans, key=lambda s: s[0])
+        bio_sequence = ["O"] * length
+        for s, e in spans:
+            bio_sequence[s:e] = ["I"] * (e - s - 1) + ["E"]
+        return bio_sequence
+
+    @classmethod
+    def tags2spans(cls, tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "I":
+                if start is None:
+                    start = i
+            elif t == "E":
+                if start is not None:
+                    spans.append((start, i + 1))
+                else:
+                    # error case: expected B or I before
+                    spans.append((i, i + 1))
+
+                start = None
+            elif t == "O":
+                if start is not None:
+                    # error case: expected E before
+                    spans.append((start, i))
+                start = None
+
+        if start is not None:
+            spans.append((start, len(tags)))
+        return spans
+
+
+class SafeIOE2Scheme(SafeDecodingScheme, IOE2Scheme):
+    pass
+
+
+class IOBESScheme(AbstractTaggingScheme):
+    index2tag, tag2index = DataTools.get_mappings(["O", "B", "I", "E", "S"])
+
+    # size = len(index2tag)
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        sorted(spans, key=lambda s: s[0])
+        tag_sequence = ["O"] * length
+        for s, e in spans:
+            if e - s == 1:
+                tag_sequence[s] = "S"
+            elif e - s > 1:
+                tag_sequence[s:e] = ["B"] + ["I"] * (e - s - 2) + ["E"]
+            else:
+                raise ValueError("Invalid span: ({}-{})".format(s, e))
+        return tag_sequence
+
+    @classmethod
+    def tags2spans(cls, tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "B":
+                if start is not None:
+                    # error case: expected O or E or S before
+                    spans.append((start, i))
+                start = i
+            elif t == "I":
+                if start is None:
+                    # error case: expected B before
+                    start = i
+            elif t == "E":
+                if start is not None:
+                    spans.append((start, i + 1))
+                else:
+                    # error case: expected S here
+                    spans.append((i, i + 1))
+                start = None
+            elif t == "S":
+                if start is not None:
+                    # error case: expected E before
+                    spans.append((start, i))
+                spans.append((i, i + 1))
+            elif t == "O":
+                if start is not None:
+                    # error case: expected E before
+                    spans.append((start, i))
+                start = None
+
+        if start is not None:
+            spans.append((start, len(tags)))
+        return spans
+
+
+class SafeIOBESScheme(SafeDecodingScheme, IOBESScheme):
+    pass
+
+
+class IOBExScheme(AbstractTaggingScheme):
+    index2tag, tag2index = DataTools.get_mappings(["O", "I", "B", "E"])
+
+    # size = len(index2tag)
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        sorted(spans, key=lambda s: s[0])
+        tag_sequence = ["O"] * length
+        for s, e in spans:
+            if e - s == 1:
+                tag_sequence[s] = "S"
+            elif e - s > 1:
+                tag_sequence[s:e] = ["B"] + ["I"] * (e - s - 2) + ["E"]
+            else:
+                raise ValueError("Invalid span: ({}-{})".format(s, e))
+        return tag_sequence
+
+    @classmethod
+    def tags2spans(cls, tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "B":
+                if start is not None:
+                    # error case: expected O or E or S before
+                    spans.append((start, i))
+                start = i
+            elif t == "I":
+                if start is None:
+                    # error case: expected B before
+                    start = i
+            elif t == "E":
+                if start is not None:
+                    spans.append((start, i + 1))
+                else:
+                    # error case: expected S here
+                    spans.append((i, i + 1))
+                start = None
+            elif t == "S":
+                if start is not None:
+                    # error case: expected E before
+                    spans.append((start, i))
+                spans.append((i, i + 1))
+            elif t == "O":
+                if start is not None:
+                    # error case: expected E before
+                    spans.append((start, i))
+                start = None
+
+        if start is not None:
+            spans.append((start, len(tags)))
+        return spans
+
+    @classmethod
+    def tags2encoding(cls, tag_sequence):
+        encoding = numpy.zeros((len(tag_sequence), cls.size()))
+        for i, tag in enumerate(tag_sequence):
+            if tag == "O":
+                vec = [1, 0, 0, 0]
+            elif tag == "I":
+                vec = [0, 1, 0, 0]
+            elif tag == "B":
+                vec = [0, 1, 1, 0]
+            elif tag == "E":
+                vec = [0, 1, 0, 1]
+            elif tag == "S":
+                vec = [0, 1, 1, 1]
+            else:
+                raise ValueError("Unexpected tag: {}".format(tag))
+            encoding[i, :] = vec
+        return encoding
+
+    @classmethod
+    def encoding2tags(cls, encoding):
+        encoding = numpy.array(encoding)
+        tags = []
+        for vec in encoding:
+            outside = vec[cls.tag2index["O"]]
+            inside = vec[cls.tag2index["I"]]
+            begin = vec[cls.tag2index["B"]]
+            end = vec[cls.tag2index["E"]]
+
+            if outside > 0.5:
+                tags.append("O")
+            else:
+                if inside > 0.5:
+                    if begin > 0.5 and end > 0.5:
+                        tags.append("S")
+                    elif begin > 0.5 and end < 0.5:
+                        tags.append("B")
+                    elif end > 0.5 and begin < 0.5:
+                        tags.append("E")
+                    else:
+                        tags.append("I")
+                else:
+                    raise ValueError("Unexpected encoding: {}".format(vec))
+
+        return tags
+
+
+class BinaryScheme(AbstractTaggingScheme):
+    index2tag, tag2index = DataTools.get_mappings(["O", "I"])
+
+    # size = len(index2tag)
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        sorted(spans, key=lambda s: s[0])
+        tag_sequence = ["O"] * length
+        for s, e in spans:
+            tag_sequence[s:e] = ["I"] * (e - s)
+
+        return tag_sequence
+
+    @classmethod
+    def tags2spans(cls, tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "I":
+                if start is None:
+                    start = i
+            elif t == "O":
+                if start is not None:
+                    spans.append((start, i))
+                start = None
+
+        if start is not None:
+            spans.append((start, len(tags)))
+        return spans
+
+
+class IOB2Scheme(AbstractTaggingScheme):
+    index2tag, tag2index = DataTools.get_mappings(["O", "B", "I"])
+
+    @classmethod
+    def spans2tags(cls, length, spans):
+        sorted(spans, key=lambda s: s[0])
+        bio_sequence = ["O"] * length
+        for s, e in spans:
+            bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
+        return bio_sequence
+
+    @classmethod
+    def tags2spans(cls, tags):
+        spans = []
+        start = None
+        for i, t in enumerate(tags):
+            if t == "B":
+                if start is not None:
+                    spans.append((start, i))
+                start = i
+            elif t == "I":
+                if start is None:
+                    start = i
+            elif t == "O":
+                if start is not None:
+                    spans.append((start, i))
+                start = None
+
+        if start:
+            spans.append((start, len(tags)))
+        return spans
+
+
+class SafeIOB2Scheme(SafeDecodingScheme, IOB2Scheme):
+    pass
+
+    # @classmethod
+    # def encoding2tags(cls, encoding):
+    #     encoding = numpy.array(encoding)
+    #
+    #     inside_scores = encoding[:, cls.tag2index["B"]] + encoding[:, cls.tag2index["I"]]
+    #
+    #     outside_scores = encoding[:, cls.tag2index["O"]]
+    #     binary_tags = list(inside_scores > outside_scores)
+    #
+    #     tags = ["I" if b else "O" for b in binary_tags]
+    #     return tags
+
+
+#################################
+class IOBScheme(object):
     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
     size = len(index2tag)
     name = "IOB"
@@ -112,202 +488,6 @@ class IOBScheme:
         return IOBScheme.name
 
 
-class BinaryScheme:
-    index2tag, tag2index = DataTools.get_mappings(["I", "O"])
-    size = len(index2tag)
-    name = "Binary"
-
-    @staticmethod
-    def spans2tags(length, spans):
-        sorted(spans, key=lambda s: s[0])
-        bio_sequence = ["O"] * length
-        for s, e in spans:
-            bio_sequence[s:e] = ["I"] * (e - s)
-
-        return bio_sequence
-
-    @staticmethod
-    def tags2spans(tags):
-        spans = []
-        start = None
-        for i, t in enumerate(tags):
-            if t == "I":
-                if start is None:
-                    start = i
-            elif t == "O":
-                if start is not None:
-                    spans.append((start, i))
-                start = None
-
-        if start:
-            spans.append((start, len(tags)))
-        return spans
-
-    @staticmethod
-    def spans2encoding(length, spans):
-        return BinaryScheme.tags2encoding(BinaryScheme.spans2tags(length, spans))
-
-    @staticmethod
-    def tags2encoding(tags):
-        return tag_sequence2encoding(tags, BinaryScheme.tag2index)
-
-    @staticmethod
-    def encoding2tags(encoding):
-        return encoding2tag_sequence(encoding, BinaryScheme.index2tag)
-
-    @staticmethod
-    def encoding2spans(encoding):
-        return BinaryScheme.tags2spans(encoding2tag_sequence(encoding, BinaryScheme.index2tag))
-
-    @staticmethod
-    def visualize_encoding(elements, bio, onehot=True, spacer=u""):
-        i = Fore.BLUE  # inside
-        o = Fore.BLACK  # outside
-        BI = [i, o]
-        if onehot:
-            bio_indices = numpy.argmax(bio, axis=1)
-        else:
-            bio_indices = bio
-        # outside should not be colored at all
-        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
-        return colored_text
-
-    @staticmethod
-    def visualize_tags(elements, tags, spacer=u""):
-        cm = dict()
-        cm["I"] = Fore.BLUE  # inside
-        cm["O"] = ""  # outside
-        # outside should not be colored at all
-        colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
-        return colored_text
-
-    @staticmethod
-    def visualize_spans(elements, spans, spacer=u""):
-        tags = BinaryScheme.spans2tags(len(elements), spans)
-        return BinaryScheme.visualize_tags(elements, tags, spacer)
-
-    def __str__(self):
-        return BinaryScheme.name
-
-    def __repr__(self):
-        return BinaryScheme.name
-
-
-# class IOBXScheme:
-#     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
-#     size = len(index2tag)
-#     name = "IOBX"
-#
-#     @staticmethod
-#     def spans2tags(length, spans):
-#         sorted(spans, key=lambda s: s[0])
-#         bio_sequence = ["O"] * length
-#         for s, e in spans:
-#             if bio_sequence[s - 1] == "B" or bio_sequence[s - 1] == "I":
-#                 # if previous token is annotated (by different annotation)
-#                 # == if last is I or B start with B
-#                 bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
-#             else:
-#                 # if last is O start with I
-#                 bio_sequence[s:e] = ["I"] * (e - s)
-#
-#         return bio_sequence
-#
-#     @staticmethod
-#     def tags2spans(tags):
-#         spans = []
-#         start = None
-#         for i, t in enumerate(tags):
-#             if t == "B":
-#                 if start is not None:
-#                     spans.append((start, i))
-#                 start = i
-#             elif t == "I":
-#                 if start is None:
-#                     start = i
-#             elif t == "O":
-#                 if start is not None:
-#                     spans.append((start, i))
-#                 start = None
-#
-#         if start:
-#             spans.append((start, len(tags)))
-#         return spans
-#
-#     @staticmethod
-#     def spans2encoding(length, spans):
-#         return IOBXScheme.tags2encoding(IOBXScheme.spans2tags(length, spans))
-#
-#     @staticmethod
-#     def tags2encoding(tag_sequence):
-#         n_tags = len(IOBXScheme.tag2index)
-#         n_elements = len(tag_sequence)
-#         encoding = numpy.zeros((n_elements, n_tags))
-#         for i, t in enumerate(tag_sequence):
-#             if t == "B":
-#                 encoding[i, :] = [1, 1, 0]
-#             elif t == "I":
-#                 encoding[i, :] = [0, 1, 0]
-#             elif t == "O":
-#                 encoding[i, :] = [0, 0, 1]
-#
-#         return encoding
-#
-#     @staticmethod
-#     def encoding2tags(encoding):
-#         tag_sequence = []
-#         for vec in encoding:
-#             if vec[2] > vec[1]:
-#                 # O > I
-#                 tag_sequence.append("O")
-#             else:
-#                 # I > O
-#                 if vec[0] > 0.5:
-#                     tag_sequence.append("B")
-#                 else:
-#                     tag_sequence.append("I")
-#         return tag_sequence
-#
-#     @staticmethod
-#     def encoding2spans(encoding):
-#         return IOBXScheme.tags2spans(IOBXScheme.encoding2tags(encoding))
-#
-#     @staticmethod
-#     def visualize_encoding(elements, bio, onehot=True, spacer=u""):
-#         b = Fore.GREEN  # beginning
-#         i = Fore.BLUE  # inside
-#         o = Fore.BLACK  # outside
-#         BI = [b, i, o]
-#         if onehot:
-#             bio_indices = numpy.argmax(bio, axis=1)
-#         else:
-#             bio_indices = bio
-#         # outside should not be colored at all
-#         colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
-#         return colored_text
-#
-#     @staticmethod
-#     def visualize_tags(elements, tags, spacer=u""):
-#         cm = dict()
-#         cm["B"] = Fore.GREEN  # beginning
-#         cm["I"] = Fore.BLUE  # inside
-#         cm["O"] = ""  # outside
-#         # outside should not be colored at all
-#         colored_text = spacer.join(map(lambda x: cm[x[1]] + x[0] + Fore.RESET, zip(elements, tags)))
-#         return colored_text
-#
-#     @staticmethod
-#     def visualize_spans(elements, spans, spacer=u""):
-#         tags = IOBXScheme.spans2tags(len(elements), spans)
-#         return IOBXScheme.visualize_tags(elements, tags, spacer)
-#
-#     def __str__(self):
-#         return IOBXScheme.name
-#
-#     def __repr__(self):
-#         return IOBXScheme.name
-
-
 class IOB2XScheme:
     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
     size = len(index2tag)
@@ -402,100 +582,87 @@ class IOB2XScheme:
         return colored_text
 
 
-class IOB2Scheme:
-    index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
-    size = len(index2tag)
-    name = "IOB2"
-
-    @staticmethod
-    def spans2tags(length, spans):
-        sorted(spans, key=lambda s: s[0])
-        bio_sequence = ["O"] * length
-        for s, e in spans:
-            bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
-        return bio_sequence
-
-    @staticmethod
-    def tags2spans(tags):
-        spans = []
-        start = None
-        for i, t in enumerate(tags):
-            if t == "B":
-                if start is not None:
-                    spans.append((start, i))
-                start = i
-            elif t == "I":
-                if start is None:
-                    start = i
-            elif t == "O":
-                if start is not None:
-                    spans.append((start, i))
-                start = None
-
-        if start:
-            spans.append((start, len(tags)))
-        return spans
-
-    @staticmethod
-    def spans2encoding(length, spans):
-        return IOB2Scheme.tags2encoding(IOB2Scheme.spans2tags(length, spans))
-
-    @staticmethod
-    def tags2encoding(tags):
-        return tag_sequence2encoding(tags, IOB2Scheme.tag2index)
-
-    @staticmethod
-    def safe_encoding2tag_sequence(encoding):
-        encoding = numpy.array(encoding)
-        inside_scores = encoding[:, IOB2Scheme.tag2index["B"]] + encoding[:, IOB2Scheme.tag2index["I"]]
-        outside_scores = encoding[:, IOB2Scheme.tag2index["O"]]
-        binary_tags = list(inside_scores > outside_scores)
-        tags = ["I" if b else "O" for b in binary_tags]
-        return tags
-
-    @staticmethod
-    def encoding2tags(encoding, safe=False):
-        if safe:
-            return IOB2Scheme.safe_encoding2tag_sequence(encoding)
-        else:
-            return encoding2tag_sequence(encoding, IOB2Scheme.index2tag)
-
-    @staticmethod
-    def encoding2spans(encoding, safe=False):
-        return IOB2Scheme.tags2spans(IOB2Scheme.encoding2tags(encoding, safe=safe))
-
-    @staticmethod
-    def visualize_encoding(elements, bio, onehot=True, spacer=u""):
-        b = Fore.GREEN  # beginning
-        i = Fore.BLUE  # inside
-        o = Fore.BLACK  # outside
-        BI = [b, i, o]
-        if onehot:
-            bio_indices = numpy.argmax(bio, axis=1)
-        else:
-            bio_indices = bio
-        # outside should not be colored at all
-        colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
-        return colored_text
-
-    def __str__(self):
-        return IOB2Scheme.name
-
-    def __repr__(self):
-        return IOB2Scheme.name
-
-
-def get_tagging_scheme(name):
-    lname = name.lower()
-
-    if name == IOBScheme.__name__ or lname == "iob" or lname == "bio":
-        return IOBScheme
-    elif name == IOB2Scheme.__name__ or lname == "iob2" or lname == "bio2":
-        return IOB2Scheme
-    elif name == BinaryScheme.__name__ or lname == "binary":
-        return BinaryScheme
-    elif name == CountScheme.__name__ or lname == "count":
-        return CountScheme
+# class IOB2Scheme:
+#     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
+#     size = len(index2tag)
+#     name = "IOB2"
+#
+#     @staticmethod
+#     def spans2tags(length, spans):
+#         sorted(spans, key=lambda s: s[0])
+#         bio_sequence = ["O"] * length
+#         for s, e in spans:
+#             bio_sequence[s:e] = ["B"] + ["I"] * (e - s - 1)
+#         return bio_sequence
+#
+#     @staticmethod
+#     def tags2spans(tags):
+#         spans = []
+#         start = None
+#         for i, t in enumerate(tags):
+#             if t == "B":
+#                 if start is not None:
+#                     spans.append((start, i))
+#                 start = i
+#             elif t == "I":
+#                 if start is None:
+#                     start = i
+#             elif t == "O":
+#                 if start is not None:
+#                     spans.append((start, i))
+#                 start = None
+#
+#         if start:
+#             spans.append((start, len(tags)))
+#         return spans
+#
+#     @staticmethod
+#     def spans2encoding(length, spans):
+#         return IOB2Scheme.tags2encoding(IOB2Scheme.spans2tags(length, spans))
+#
+#     @staticmethod
+#     def tags2encoding(tags):
+#         return tag_sequence2encoding(tags, IOB2Scheme.tag2index)
+#
+#     @staticmethod
+#     def safe_encoding2tag_sequence(encoding):
+#         encoding = numpy.array(encoding)
+#         inside_scores = encoding[:, IOB2Scheme.tag2index["B"]] + encoding[:, IOB2Scheme.tag2index["I"]]
+#         outside_scores = encoding[:, IOB2Scheme.tag2index["O"]]
+#         binary_tags = list(inside_scores > outside_scores)
+#         tags = ["I" if b else "O" for b in binary_tags]
+#         return tags
+#
+#     @staticmethod
+#     def encoding2tags(encoding, safe=False):
+#         if safe:
+#             return IOB2Scheme.safe_encoding2tag_sequence(encoding)
+#         else:
+#             return encoding2tag_sequence(encoding, IOB2Scheme.index2tag)
+#
+#     @staticmethod
+#     def encoding2spans(encoding, safe=False):
+#         return IOB2Scheme.tags2spans(IOB2Scheme.encoding2tags(encoding, safe=safe))
+#
+#     @staticmethod
+#     def visualize_encoding(elements, bio, onehot=True, spacer=u""):
+#         b = Fore.GREEN  # beginning
+#         i = Fore.BLUE  # inside
+#         o = Fore.BLACK  # outside
+#         BI = [b, i, o]
+#         if onehot:
+#             bio_indices = numpy.argmax(bio, axis=1)
+#         else:
+#             bio_indices = bio
+#         # outside should not be colored at all
+#         colored_text = spacer.join(map(lambda x: BI[x[1]] + x[0] + Fore.RESET, zip(elements, bio_indices)))
+#         return colored_text
+#
+#     def __str__(self):
+#         return IOB2Scheme.name
+#
+#     def __repr__(self):
+#         return IOB2Scheme.name
 
 
 class CountScheme:
@@ -591,80 +758,23 @@ class CountScheme:
         return IOBScheme.name
 
 
-# class IOEScheme:
-#     index2tag, tag2index = DataTools.get_mappings(["E", "I", "O"])
-#     size = len(index2tag)
-#     name = "IOE"
-#
-#     @staticmethod
-#     def annotations2encoding(n, annotations):
-#         return IOEScheme.spans2encoding(n, annotations_to_spans(annotations))
-#
-#     @staticmethod
-#     def spans2encoding(length, spans):
-#         return tag_sequence2encoding(spans2iob_sequence(length, spans), IOEScheme.tag2index)
-#
-#     @staticmethod
-#     def encoding2spans(tag_probabilities):
-#         return iob_sequence2spans(encoding2tag_sequence(tag_probabilities, IOEScheme.index2tag))
-#
-#     @staticmethod
-#     def visualize_encoding(elements, bio, onehot=True, spacer=""):
-#         b = Fore.GREEN  # beginning
-#         i = Fore.BLUE  # inside
-#         o = Fore.BLACK  # outside
-#         BI = [b, i, o]
-#         if onehot:
-#             bio_indices = numpy.argmax(bio, axis=1)
-#         else:
-#             bio_indices = bio
-#         # outside should not be colored at all
-#         colored_text = spacer.join(map(lambda (e, bi): BI[bi] + e + Fore.RESET, zip(elements, bio_indices)))
-#         return colored_text
-#
-#     def __str__(self):
-#         return self.name
-#
-#     def __repr__(self):
-#         return self.name
+#####################################
 
+def get_tagging_scheme(name):
+    tagging_scheme = getattr(sys.modules[__name__], name)
 
-# class IOB2Scheme:
-#     index2tag, tag2index = DataTools.get_mappings(["B", "I", "O"])
-#     size = len(index2tag)
-#
-#     def __init__(self):
-#         self.name = "IOB2"
-#         self.annotations2encoding = annotations_to_iob2
-#         self.spans2encoding = spans2iob2
-#         self.encoding2spans = iob22spans
-#         self.visualize_encoding = visualize_iob2
-#         self.spans2tags = spans2iob2_sequence
-#
-#     def __str__(self):
-#         return self.name
-#
-#     def __repr__(self):
-#         return self.name
-
-
-# class IOBESScheme:
-#     index2tag, tag2index = DataTools.get_mappings(["S", "B", "I", "E", "O"])
-#     size = len(index2tag)
-#
-#     def __init__(self):
-#         self.name = "IOBES"
-#         self.annotations2encoding = annotations_to_iobes
-#         self.spans2encoding = spans2iobes
-#         self.encoding2spans = iobes2spans
-#         self.visualize_encoding = visualize_iobes
-#         self.spans2tags = spans2iobes_sequence
-#
-#     def __str__(self):
-#         return self.name
-#
-#     def __repr__(self):
-#         return self.name
+    if tagging_scheme:
+        return tagging_scheme
+    else:
+        lname = name.lower()
+        if name == IOBScheme.__name__ or lname == "iob" or lname == "bio":
+            return IOBScheme
+        elif name == IOB2Scheme.__name__ or lname == "iob2" or lname == "bio2":
+            return IOB2Scheme
+        elif name == BinaryScheme.__name__ or lname == "binary":
+            return BinaryScheme
+        elif name == CountScheme.__name__ or lname == "count":
+            return CountScheme
 
 
 def binary_search(a, x, lo=0, hi=None):  # can't use a to specify default for hi
