@@ -8,18 +8,22 @@ import os
 import pprint
 import re
 import time
-import ujson
+import json
+import traceback
 from collections import Counter
 
-import matplotlib
-import matplotlib.markers
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    import matplotlib.markers
+    import matplotlib.pyplot as plt
+    import pylab
+except ImportError:
+    print("Warning: Plotting not available:")
+    print(traceback.format_exc())
 import numpy
-import pylab
 import scipy
 import six
 from colorama import Fore
-from keras import Model
 from numpy.random.mtrand import RandomState
 from six import string_types
 from sklearn.model_selection import ParameterSampler
@@ -82,7 +86,7 @@ class Configuration(dict):
                 self[k] = v
 
     def __getattr__(self, attr):
-        return self.get(attr)
+        return self.__dict__[attr]
 
     def __setattr__(self, key, value):
         self.__setitem__(key, value)
@@ -117,14 +121,13 @@ class Configuration(dict):
             os.makedirs(dirpath)
 
         with open(filepath, "w") as f:
-            f.write(ujson.dumps(d))
+            f.write(json.dumps(d))
 
     @classmethod
     def load(cls, filepath):
         with open(filepath) as f:
-            conf_str = f.read().strip()
-
-        d = ujson.loads(conf_str)
+            # conf_str = f.read().strip()
+            d = json.load(f)
         conf = Configuration(d)
         return conf
 
@@ -1365,5 +1368,6 @@ def get_sampled_configuration(base_conf, param_distribution, n_iter, seed):
 
 
 def get_named_keras_model_outputs(model, outputs):
-    assert isinstance(model, Model)
+    if not isinstance(outputs, list):
+        outputs = [outputs]
     return dict(zip(model.output_names, outputs))

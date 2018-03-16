@@ -1,8 +1,8 @@
-
 import re
-import os
-import numpy
+
 import nltk
+import numpy
+
 from nlputils import DataTools
 
 __author__ = 'sjebbara'

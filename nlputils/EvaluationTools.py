@@ -95,6 +95,7 @@ def semeval_f1(correct, predicted, b=1):
     f1 = (1 + (b ** 2)) * p * r / ((p * b ** 2) + r) if p > 0 and r > 0 else 0.
     return p, r, f1, common, retrieved, relevant
 
+
 def auc(target_labels, predicted_scores):
     fpr, tpr, thresholds = sklearn.metrics.roc_curve(target_labels, predicted_scores)
     auc = sklearn.metrics.auc(fpr, tpr)
