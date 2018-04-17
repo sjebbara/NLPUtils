@@ -3,14 +3,16 @@ import functools
 import gzip
 import io
 import itertools
+import json
 import math
 import os
 import pprint
 import re
 import time
-import json
 import traceback
 from collections import Counter
+from functools import reduce
+from typing import List, Tuple, Sequence
 
 try:
     import matplotlib
@@ -26,84 +28,136 @@ import six
 from colorama import Fore
 from numpy.random.mtrand import RandomState
 from six import string_types
-from sklearn.model_selection import ParameterSampler
+from sklearn.model_selection import ParameterSampler, ParameterGrid
 
 from nlputils import EvaluationTools
 
 __author__ = 'sjebbara'
 
 
-class BetterDict(dict):
-    """
-    Example:
-    m = Map({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
-    """
-
+class BetterDict(object):
     def __init__(self, *args, **kwargs):
-        super(BetterDict, self).__init__(*args, **kwargs)
-        for arg in args:
-            if isinstance(arg, dict):
-                for k, v in arg.items():
-                    self[k] = v
+        super().__init__()
+        super().__setattr__('_data', dict(*args, **kwargs))
 
-        if kwargs:
-            for k, v in kwargs.items():
-                self[k] = v
-
-    def __getattr__(self, attr):
-        return self.get(attr)
-
-    def __setattr__(self, key, value):
-        self.__setitem__(key, value)
+    def __getitem__(self, item):
+        return self._data[item]
 
     def __setitem__(self, key, value):
-        super(BetterDict, self).__setitem__(key, value)
-        self.__dict__.update({key: value})
-
-    def __delattr__(self, item):
-        self.__delitem__(item)
+        self._data[key] = value
 
     def __delitem__(self, key):
-        super(BetterDict, self).__delitem__(key)
-        del self.__dict__[key]
+        del self._data[key]
 
-
-class Configuration(dict):
-    """
-    Example:
-    m = Map({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
-    """
-
-    def __init__(self, *args, **kwargs):
-        super(Configuration, self).__init__(*args, **kwargs)
-        for arg in args:
-            if isinstance(arg, dict):
-                for k, v in arg.items():
-                    self[k] = v
-
-        if kwargs:
-            for k, v in kwargs.items():
-                self[k] = v
-
-    def __getattr__(self, attr):
-        return self.__dict__[attr]
+    def __getattr__(self, item):
+        return self._data[item]
 
     def __setattr__(self, key, value):
-        self.__setitem__(key, value)
+        self._data[key] = value
+
+    def __repr__(self):
+        return repr(self._data)
+
+    def __str__(self):
+        return str(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __contains__(self, item):
+        return item in self._data
+
+    def clear(self):
+        return self._data.clear()
+
+    def copy(self):
+        return self._data.copy()
+
+    def has_key(self, k):
+        return k in self._data
+
+    def update(self, *args, **kwargs):
+        return self._data.update(*args, **kwargs)
+
+    def keys(self):
+        return self._data.keys()
+
+    def values(self):
+        return self._data.values()
+
+    def items(self):
+        return self._data.items()
+
+
+class Configuration(object):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        super().__setattr__('_data', dict(*args, **kwargs))
+        super().__setattr__('_accessed_fields', set())
+
+    def __getitem__(self, item):
+        self._accessed_fields.add(item)
+        return self._data[item]
 
     def __setitem__(self, key, value):
-        super(Configuration, self).__setitem__(key, value)
-        self.__dict__.update({key: value})
-
-    def __delattr__(self, item):
-        self.__delitem__(item)
+        self._data[key] = value
 
     def __delitem__(self, key):
-        super(Configuration, self).__delitem__(key)
-        del self.__dict__[key]
+        del self._data[key]
 
-    def description(self):
-        return pprint.pformat(self)
+    def __getattr__(self, item):
+        self._accessed_fields.add(item)
+        return self._data[item]
+
+    def __setattr__(self, key, value):
+        # if key == "accessed_fields":
+        #     super(MyDict, self).__setattr__(key, value)
+        # else:
+        self._data[key] = value
+
+    def __repr__(self):
+        return repr(self._data)
+
+    def __str__(self):
+        return str(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __contains__(self, item):
+        return item in self._data
+
+    def clear(self):
+        return self._data.clear()
+
+    def copy(self):
+        return self._data.copy()
+
+    def has_key(self, k):
+        return k in self._data
+
+    def update(self, *args, **kwargs):
+        return self._data.update(*args, **kwargs)
+
+    def keys(self):
+        return self._data.keys()
+
+    def values(self):
+        return self._data.values()
+
+    def items(self):
+        return self._data.items()
+
+    @property
+    def accessed_fields(self):
+        return self._accessed_fields
+
+    def clear_accessed_fields(self):
+        self._accessed_fields.clear()
+
+    def accessed_dict(self):
+        d = {k: self[k] for k in self._accessed_fields}
+        return Configuration(d)
 
     def _to_primitive_dict(self):
         d = dict()
@@ -114,22 +168,129 @@ class Configuration(dict):
                 d[k] = v
         return d
 
-    def save(self, filepath, makedirs=False):
-        d = self._to_primitive_dict()
+    def description(self):
+        return pprint.pformat(self._data)
+
+    def save(self, filepath, makedirs=False, accessed_only=False):
+        if accessed_only:
+            d = self.accessed_dict()._to_primitive_dict()
+        else:
+            d = self._to_primitive_dict()
+
         if makedirs:
             dirpath = os.path.dirname(filepath)
             os.makedirs(dirpath)
 
         with open(filepath, "w") as f:
-            f.write(json.dumps(d))
+            f.write(json.dumps(d, indent=4, sort_keys=True))
 
     @classmethod
     def load(cls, filepath):
         with open(filepath) as f:
-            # conf_str = f.read().strip()
             d = json.load(f)
-        conf = Configuration(d)
+        conf = cls(d)
         return conf
+
+
+# class BetterDict(dict):
+#     """
+#     Example:
+#     m = Map({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
+#     """
+#
+#     def __init__(self, *args, **kwargs):
+#         super(BetterDict, self).__init__(*args, **kwargs)
+#         for arg in args:
+#             if isinstance(arg, dict):
+#                 for k, v in arg.items():
+#                     self[k] = v
+#
+#         if kwargs:
+#             for k, v in kwargs.items():
+#                 self[k] = v
+#
+#     def __getattr__(self, attr):
+#         return self.get(attr)
+#
+#     def __setattr__(self, key, value):
+#         self.__setitem__(key, value)
+#
+#     def __setitem__(self, key, value):
+#         super(BetterDict, self).__setitem__(key, value)
+#         self.__dict__.update({key: value})
+#
+#     def __delattr__(self, item):
+#         self.__delitem__(item)
+#
+#     def __delitem__(self, key):
+#         super(BetterDict, self).__delitem__(key)
+#         del self.__dict__[key]
+
+# class Configuration(dict):
+#     """
+#     Example:
+#     m = Map({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
+#     """
+#
+#     def __init__(self, *args, **kwargs):
+#         super(Configuration, self).__init__(*args, **kwargs)
+#         for arg in args:
+#             if isinstance(arg, dict):
+#                 for k, v in arg.items():
+#                     self[k] = v
+#
+#         if kwargs:
+#             for k, v in kwargs.items():
+#                 self[k] = v
+#
+#     def __getattr__(self, attr):
+#         return self.__dict__[attr]
+#
+#     def __getitem__(self, item):
+#         return super(Configuration, self).__getitem__(item)
+#
+#     def __setattr__(self, key, value):
+#         self.__setitem__(key, value)
+#
+#     def __setitem__(self, key, value):
+#         super(Configuration, self).__setitem__(key, value)
+#         self.__dict__.update({key: value})
+#
+#     def __delattr__(self, item):
+#         self.__delitem__(item)
+#
+#     def __delitem__(self, key):
+#         super(Configuration, self).__delitem__(key)
+#         del self.__dict__[key]
+#
+#     def description(self):
+#         return pprint.pformat(self)
+#
+#     def _to_primitive_dict(self):
+#         d = dict()
+#         for k, v in self.items():
+#             if hasattr(v, "__name__"):
+#                 d[k] = v.__name__
+#             else:
+#                 d[k] = v
+#         return d
+#
+#     def save(self, filepath, makedirs=False):
+#         d = self._to_primitive_dict()
+#         if makedirs:
+#             dirpath = os.path.dirname(filepath)
+#             os.makedirs(dirpath)
+#
+#         with open(filepath, "w") as f:
+#             f.write(json.dumps(d, indent=4, sort_keys=True))
+#
+#     @classmethod
+#     def load(cls, filepath):
+#         with open(filepath) as f:
+#             # conf_str = f.read().strip()
+#             d = json.load(f)
+#         conf = Configuration(d)
+#         return conf
 
 
 class CorpusWrapper:
@@ -1039,9 +1200,7 @@ def pad(X, padding_position, value, mask=False):
 
     n_dim_value = len(value_shape)
     if n_dim_value > 0:
-        shape = shape[:-n_dim_value]
-        # print "Value shape:", value_shape, n_dim_value
-        # print "PAD SHAPE:", shape
+        shape = shape[:-n_dim_value]  # print "Value shape:", value_shape, n_dim_value  # print "PAD SHAPE:", shape
 
     if mask:
         return pad_to_shape(X, shape, padding_position, value, True)
@@ -1075,11 +1234,11 @@ def get_padding_shape(X):
     return [len(X)] + padding_shape_x
 
 
-def remove_padding(iterable, expected_length, padding_position):
+def remove_padding(sequence, expected_length, padding_position):
     if padding_position == "pre":
-        return iterable[-expected_length:]
+        return sequence[len(sequence) - expected_length:]
     elif padding_position == "post":
-        return iterable[:expected_length]
+        return sequence[:expected_length]
 
 
 def get_timestamp():
@@ -1352,8 +1511,18 @@ def align_string_lists(lists, padding_character=" ", alignment_position="start")
     return aligned_lists
 
 
-def get_sampled_configuration(base_conf, param_distribution, n_iter, seed):
+def get_sampled_configuration(base_conf: Configuration, param_distribution: dict, n_iter: int, seed: int) -> List[
+    Configuration]:
     random_state = RandomState(seed)
+
+    n_confs = 1
+    for params in param_distribution.values():
+        n_confs *= len(params)
+
+    if n_iter > n_confs:
+        print("WARNING: Parameter grid only contains {} distinct configurations.".format(n_confs))
+        n_iter = n_confs
+
     sampler = ParameterSampler(param_distribution, n_iter, random_state)
     sampled_params_list = [params for params in sampler]
 
@@ -1365,6 +1534,23 @@ def get_sampled_configuration(base_conf, param_distribution, n_iter, seed):
         confs.append(conf)
 
     return confs
+
+
+def insert_dependent_params(conf: Configuration, param_maps: Sequence[Tuple[str, str, dict]],
+                            ignore_missing=False) -> Configuration:
+    mapped_conf = Configuration(conf)
+    for source_key, target_key, param_map in param_maps:
+        source_value = mapped_conf[source_key]
+        if source_value in param_map:
+            mapped_conf[target_key] = param_map[source_value]
+        elif None in param_map:
+            mapped_conf[target_key] = param_map[None]
+        else:
+            if not ignore_missing:
+                raise ValueError("Parameter map for {} does not contain entry for source value: '{}'".format(
+                    (source_key, target_key), source_value))
+
+    return mapped_conf
 
 
 def get_named_keras_model_outputs(model, outputs):
