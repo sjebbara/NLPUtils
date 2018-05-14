@@ -1541,15 +1541,16 @@ def insert_dependent_params(conf: Configuration, param_maps: Sequence[Tuple[str,
                             ignore_missing=False) -> Configuration:
     mapped_conf = Configuration(conf)
     for source_key, target_key, param_map in param_maps:
-        source_value = mapped_conf[source_key]
-        if source_value in param_map:
-            mapped_conf[target_key] = param_map[source_value]
-        elif None in param_map:
-            mapped_conf[target_key] = param_map[None]
-        else:
-            if not ignore_missing:
-                raise ValueError("Parameter map for {} does not contain entry for source value: '{}'".format(
-                    (source_key, target_key), source_value))
+        if source_key in mapped_conf:
+            source_value = mapped_conf[source_key]
+            if source_value in param_map:
+                mapped_conf[target_key] = param_map[source_value]
+            elif None in param_map:
+                mapped_conf[target_key] = param_map[None]
+            else:
+                if not ignore_missing:
+                    raise ValueError("Parameter map for {} does not contain entry for source value: '{}'".format(
+                        (source_key, target_key), source_value))
 
     return mapped_conf
 
