@@ -224,7 +224,7 @@ def get_n_grams(tokens, n, pad_start=None, pad_end=None):
     return zip(*[tokens[i:] for i in range(n)])
 
 
-negation_words = set("no cannot not none nothing nowhere neither nor never nobody hardly scarcely barely".split())
+negation_words = set("no cannot not none nothing nowhere neither nor never nobody hardly scarcely barely n't".split())
 
 
 def is_negation(token):
