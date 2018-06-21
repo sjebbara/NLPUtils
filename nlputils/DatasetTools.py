@@ -1,4 +1,5 @@
 import numpy
+
 from nlputils import LearningTools
 
 
@@ -637,8 +638,22 @@ def pad_to_shape(X, to_shape, padding_position, value):
     return X_padded
 
 
-def pad(X, padding_position, value):
-    shape = LearningTools.get_padding_shape(X)
+def pad(X, padding_position, value, min_shape=None, required_shape=None):
+    derived_shape = LearningTools.get_padding_shape(X)
+    if min_shape:
+        if len(derived_shape) != len(min_shape):
+            raise ValueError(
+                "Minimum shape {} must match dimensionality of derived shape {}".format(min_shape, derived_shape))
+
+        derived_shape = tuple(max(m, d) if m is not None else d for m, d in zip(min_shape, derived_shape))
+
+    if required_shape:
+        if len(derived_shape) != len(required_shape):
+            raise ValueError(
+                "Required shape {} must match dimensionality of derived shape {}".format(required_shape, derived_shape))
+
+        derived_shape = tuple(r if r is not None else d for r, d in zip(required_shape, derived_shape))
+
     value_shape = LearningTools.get_padding_shape(value)
-    padding_shape = shape[:len(shape) - len(value_shape)]
+    padding_shape = derived_shape[:len(derived_shape) - len(value_shape)]
     return pad_to_shape(X, padding_shape, padding_position, value)
