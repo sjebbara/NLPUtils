@@ -1537,6 +1537,22 @@ def get_sampled_configuration(base_conf: Configuration, param_distribution: dict
     return confs
 
 
+def get_all_configurations(base_conf: Configuration, param_distribution: dict) -> List[Configuration]:
+    n_confs = 1
+
+    grid = ParameterGrid(param_distribution)
+    all_params = list(grid)
+
+    confs = []
+    for params in all_params:
+        conf = Configuration(base_conf)
+        for k, v in params.items():
+            conf[k] = v
+        confs.append(conf)
+
+    return confs
+
+
 def insert_dependent_params(conf: Configuration, param_maps: Sequence[Tuple[str, str, dict]],
                             ignore_missing=False) -> Configuration:
     mapped_conf = Configuration(conf)
