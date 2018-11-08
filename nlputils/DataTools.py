@@ -1,12 +1,13 @@
 import io
 import json
 import os
+from collections import defaultdict, Counter
+from xml.sax.saxutils import unescape
+
 import numpy
+from sklearn.base import BaseEstimator, TransformerMixin
 
 from nlputils import LearningTools
-from sklearn.base import BaseEstimator, TransformerMixin
-from xml.sax.saxutils import unescape
-from collections import defaultdict, Counter
 
 __author__ = 'sjebbara'
 
@@ -251,7 +252,7 @@ class Vocabulary:
         return word
 
     def from_k_hot(self, k_hot, threshold=0.5):
-        words = set(self.get_words(i for i, x in enumerate(k_hot) if x > threshold))
+        words = set(self.get_words(i for i, x in enumerate(k_hot) if x >= threshold))
         return words
 
     def from_bow(self, bow, threshold=0.5):
@@ -265,7 +266,9 @@ class Vocabulary:
         return words
 
     def from_bbow(self, bow, threshold=0.5):
-        words = set(self.get_words(i for i, x in enumerate(bow) if x > threshold))
+        words = [(x, self.get_word(i)) for i, x in enumerate(bow) if x >= threshold]
+        words = sorted(words, key=lambda x: x[0], reverse=True)
+        words = [w for p, w in words]
         return words
 
     def save(self, filepath):
@@ -337,6 +340,9 @@ class Embedding:
 
     def __contains__(self, word):
         return word in self.vocabulary
+
+    def __getitem__(self, word):
+        return self.get_vector(word)
 
     def init(self, vocabulary, W, padding=None):
         assert isinstance(vocabulary, Vocabulary)
