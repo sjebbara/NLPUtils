@@ -2,8 +2,8 @@ import io
 import json
 import os
 import typing
-from collections import defaultdict, Counter, Set
-from typing import List, Dict, Iterable, Sequence, TypeVar
+from collections import defaultdict, Counter
+from typing import List, Dict, Iterable, Sequence, TypeVar, Set
 from xml.sax.saxutils import unescape
 
 import numpy
