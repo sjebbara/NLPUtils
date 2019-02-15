@@ -5,6 +5,7 @@ from typing import Sequence, TypeVar, Callable, Tuple, List, Dict
 import nltk
 import numpy
 from nltk import FreqDist
+from nltk.corpus import stopwords
 from scipy.spatial.distance import cosine
 
 from nlputils import DataTools
@@ -45,8 +46,6 @@ pos_vocabulary.set_unknown(1)
 CHUNK_TAG_SET = (
     "B-PRT", "I-PRT", "B-LST", "I-LST", "B-ADVP", "I-ADVP", "B-VP", "I-VP", "B-CONJP", "I-CONJP", "B-NP", "I-NP",
     "B-ADJP", "I-ADJP", "B-PP", "I-PP", "B-INTJ", "I-INTJ", "B-SBAR", "I-SBAR", "B-UCP", "I-UCP", "O")
-
-from nltk.corpus import stopwords
 
 STOPWORDS = set(stopwords.words("english"))
 

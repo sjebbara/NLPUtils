@@ -1,7 +1,8 @@
 import io
 import json
 import os
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, Set
+from typing import List, Dict, Iterable, Sequence, TypeVar
 from xml.sax.saxutils import unescape
 
 import numpy
@@ -109,41 +110,41 @@ class DataSample:
 
 class Vocabulary:
     def __init__(self):
-        self.vocab = set()
-        self.counts = Counter()
-        self.index2word = []
-        self.word2index = dict()
+        self.vocab = set()  # type: Set[str]
+        self.counts = Counter()  # type: Counter[str]
+        self.index2word = []  # type: List[str]
+        self.word2index = dict()  # type: Dict[str, int]
 
-    def set_padding(self, index):
+    def set_padding(self, index: int):
         self.padding_index = index
         self.padding_word = self.get_word(index)
 
-    def add_padding(self, word, index):
+    def add_padding(self, word: str, index: int):
         self.add(word, index)
         self.set_padding(index)
 
-    def set_unknown(self, index):
+    def set_unknown(self, index: int):
         self.unknown_index = index
         self.unknown_word = self.get_word(index)
 
-    def add_unknown(self, word, index):
+    def add_unknown(self, word: str, index: int):
         self.add(word, index)
         self.set_unknown(index)
 
-    def init_from_vocab(self, vocab):
+    def init_from_vocab(self, vocab: Iterable[str]):
         self.vocab = set(vocab)
 
         tmp_vocab = list(self.vocab)
         self.index2word, self.word2index = get_mappings(tmp_vocab)
         self.counts = Counter(self.vocab)
 
-    def init_from_mapping(self, index2word, word2index):
+    def init_from_mapping(self, index2word: List[str], word2index: Dict[str, int]):
         self.index2word = index2word
         self.word2index = word2index
         self.vocab = set(self.word2index.keys())
         self.counts = Counter(self.vocab)
 
-    def init_from_word_list(self, vocab_list, counts=None):
+    def init_from_word_list(self, vocab_list: Sequence[str], counts: Counter[str] = None):
         self.index2word, self.word2index = get_mappings(vocab_list)
         self.vocab = set(self.word2index.keys())
         if counts:
@@ -151,7 +152,7 @@ class Vocabulary:
         else:
             self.counts = Counter(self.vocab)
 
-    def init_from_counts(self, counts):
+    def init_from_counts(self, counts: Counter[str]):
         self.counts = counts
 
         self.index2word, self.word2index = get_mappings(self.counts.keys())
@@ -165,7 +166,7 @@ class Vocabulary:
     def __len__(self):
         return len(self.vocab)
 
-    def __contains__(self, word):
+    def __contains__(self, word: str):
         return word in self.word2index
 
     def __str__(self):
@@ -191,7 +192,7 @@ class Vocabulary:
     def words(self):
         return self.vocab
 
-    def get_index(self, word):
+    def get_index(self, word: str) -> int:
         if word in self.word2index:
             return self.word2index[word]
         else:
@@ -200,7 +201,7 @@ class Vocabulary:
             else:
                 raise ValueError("Unknown word '{}' received and no value specified for that.".format(word))
 
-    def get_indices(self, words, drop_unknown=False):
+    def get_indices(self, words: Sequence[str], drop_unknown=False) -> numpy.ndarray:
         if drop_unknown or not hasattr(self, "unknown_index"):
             return values2indices(words, self.word2index)
         else:
@@ -209,53 +210,53 @@ class Vocabulary:
     def indices(self):
         return range(len(self.index2word))
 
-    def get_word(self, index):
+    def get_word(self, index: int) -> str:
         return self.index2word[index]
 
-    def get_words(self, indices, drop_unknown=False):
+    def get_words(self, indices: Iterable[int], drop_unknown=False) -> List[str]:
         if drop_unknown or not hasattr(self, "unknown_word"):
             return indices2values(indices, self.index2word)
         else:
             return indices2values(indices, self.index2word, default=self.unknown_word)
 
-    def to_one_hot(self, word):
+    def to_one_hot(self, word: str) -> numpy.ndarray:
         v = numpy.zeros(len(self.index2word))
         v[self.get_index(word)] = 1
         return v
 
-    def to_k_hot(self, words):
+    def to_k_hot(self, words: Iterable[str]) -> numpy.ndarray:
         v = numpy.zeros(len(self.index2word))
         for i, word in enumerate(words):
             v[self.get_index(word)] = 1
         return v
 
-    def to_bow(self, words):
+    def to_bow(self, words: Iterable[str]) -> numpy.ndarray:
         v = numpy.zeros(len(self.index2word))
         for i, word in enumerate(words):
             v[self.get_index(word)] += 1
         return v
 
-    def to_bbow(self, words):
+    def to_bbow(self, words: Iterable[str]) -> numpy.ndarray:
         v = self.to_bow(words)
         v = (v > 0).astype(int)
         return v
 
-    def to_one_hot_sequence(self, words):
+    def to_one_hot_sequence(self, words: Sequence[str]) -> numpy.ndarray:
         v = numpy.zeros((len(words), len(self.index2word)))
         for i, word in enumerate(words):
             v[i, self.get_index(word)] = 1
         return v
 
-    def from_one_hot(self, one_hot):
-        i = numpy.argmax(one_hot)
+    def from_one_hot(self, one_hot: Sequence[float]) -> str:
+        i = int(numpy.argmax(one_hot))
         word = self.get_word(i)
         return word
 
-    def from_k_hot(self, k_hot, threshold=0.5):
+    def from_k_hot(self, k_hot: Sequence[float], threshold=0.5) -> Set[str]:
         words = set(self.get_words(i for i, x in enumerate(k_hot) if x >= threshold))
         return words
 
-    def from_bow(self, bow, threshold=0.5):
+    def from_bow(self, bow: Sequence[float], threshold=0.5) -> List[str]:
         words = []
         for i, v in enumerate(bow):
             k = int(v)
@@ -265,13 +266,13 @@ class Vocabulary:
             words += [self.get_word(i)] * k
         return words
 
-    def from_bbow(self, bow, threshold=0.5):
+    def from_bbow(self, bow: Sequence[float], threshold=0.5) -> List[str]:
         words = [(x, self.get_word(i)) for i, x in enumerate(bow) if x >= threshold]
         words = sorted(words, key=lambda x: x[0], reverse=True)
         words = [w for p, w in words]
         return words
 
-    def save(self, filepath):
+    def save(self, filepath: str):
         word_count_list = [(w, self.counts[w]) for w in self.index2word]
 
         def to_str(x):
@@ -280,7 +281,7 @@ class Vocabulary:
 
         LearningTools.write_iterable(word_count_list, filepath, to_str)
 
-    def load(self, filepath):
+    def load(self, filepath: str):
         def to_object(line):
             parts = line.split(" ")
             word = parts[0]
@@ -298,7 +299,7 @@ class Vocabulary:
         self.index2word, self.word2index = get_mappings(self.index2word)
         self.vocab = set(self.index2word)
 
-    def add(self, word, index=None):
+    def add(self, word: str, index: int = None):
         if word in self.word2index:
             print("already there", word, self.word2index[word])
             return self.word2index[word]
@@ -318,7 +319,7 @@ class Vocabulary:
                     print("Moved {} to {}".format(self.padding_word, self.padding_index))
                 return index
 
-    def append(self, word):
+    def append(self, word: str):
         if word in self.word2index:
             return self.word2index[word]
         else:
@@ -332,8 +333,8 @@ class Vocabulary:
 
 class Embedding:
     def __init__(self):
-        self.vocabulary = None
-        self.W = None
+        self.vocabulary = None  # type: Vocabulary
+        self.W = None  # type: numpy.ndarray
 
     def __len__(self):
         return len(self.vocabulary)
@@ -378,10 +379,10 @@ class Embedding:
         self.W = self.W[indices]
         self.vocabulary.init_from_word_list(vocab_trim, counts)
 
-    def get_vector(self, word):
+    def get_vector(self, word: str) -> numpy.ndarray:
         return self.W[self.vocabulary.get_index(word), :]
 
-    def get_vectors(self, words, drop_unknown=False):
+    def get_vectors(self, words: Sequence[str], drop_unknown=False) -> numpy.ndarray:
         indices = self.vocabulary.get_indices(words, drop_unknown)
         if len(indices) > 0:
             return self.W[indices, :]
@@ -439,7 +440,7 @@ class Embedding:
         vocabulary.init_from_word_list(words)
         self.init(vocabulary, vectors)
 
-    def add(self, word, index=None, vector=None, vector_init=None):
+    def add(self, word: str, index: int = None, vector: numpy.ndarray = None, vector_init: str = None):
         if vector is None:
             if vector_init == "zeros":
                 vector = numpy.zeros(self.W.shape[1:])
@@ -572,7 +573,10 @@ def subset(X, I):
     return [X[i] for i in I]
 
 
-def values2indices(values, value2index, default=None):
+T = TypeVar("T")
+
+
+def values2indices(values: Sequence[T], value2index: Dict[T, int], default: int = None) -> numpy.ndarray:
     if default is None:
         vec = numpy.array([value2index[v] for v in values if v in value2index])
     else:
@@ -582,7 +586,7 @@ def values2indices(values, value2index, default=None):
     return vec
 
 
-def indices2values(indices, index2value, default=None):
+def indices2values(indices: Iterable[int], index2value: Sequence[T], default: T = None) -> List[T]:
     if default is None:
         val = [index2value[i] for i in indices if i < len(index2value)]
     else:
