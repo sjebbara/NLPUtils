@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import typing
 from collections import defaultdict, Counter, Set
 from typing import List, Dict, Iterable, Sequence, TypeVar
 from xml.sax.saxutils import unescape
@@ -111,7 +112,7 @@ class DataSample:
 class Vocabulary:
     def __init__(self):
         self.vocab = set()  # type: Set[str]
-        self.counts = Counter()  # type: Counter[str]
+        self.counts = Counter()  # type: typing.Counter[str]
         self.index2word = []  # type: List[str]
         self.word2index = dict()  # type: Dict[str, int]
 
@@ -144,7 +145,7 @@ class Vocabulary:
         self.vocab = set(self.word2index.keys())
         self.counts = Counter(self.vocab)
 
-    def init_from_word_list(self, vocab_list: Sequence[str], counts: Counter[str] = None):
+    def init_from_word_list(self, vocab_list: Sequence[str], counts: typing.Counter[str] = None):
         self.index2word, self.word2index = get_mappings(vocab_list)
         self.vocab = set(self.word2index.keys())
         if counts:
@@ -152,7 +153,7 @@ class Vocabulary:
         else:
             self.counts = Counter(self.vocab)
 
-    def init_from_counts(self, counts: Counter[str]):
+    def init_from_counts(self, counts: typing.Counter[str]):
         self.counts = counts
 
         self.index2word, self.word2index = get_mappings(self.counts.keys())
